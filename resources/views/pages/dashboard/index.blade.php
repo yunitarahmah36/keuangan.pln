@@ -4,7 +4,7 @@
      ============================================== -->
 <section id="view-dashboard" class="spa-view-pane active">
     <!-- Welcome Hero Card -->
-    <div class="card-theme-accent p-6 sm:p-8 mb-6 border-[#E5D6A0]">
+    <div class="card-theme-accent p-5 sm:p-7 md:p-8 mb-6 border-[#FFE082]">
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
                 <span class="badge-soft-yellow mb-2.5">
@@ -13,16 +13,16 @@
                     </svg>
                     Fondasi Sistem Aktif
                 </span>
-                <h3 class="text-2xl sm:text-3xl font-extrabold text-[#4B2E21] tracking-tight">
+                <h3 class="text-xl sm:text-2xl md:text-3xl font-extrabold text-[#4B2E21] tracking-tight">
                     Dashboard Keuangan
                 </h3>
-                <p class="text-sm sm:text-base text-[#6B4D3F] mt-1.5 max-w-2xl leading-relaxed">
+                <p class="text-xs sm:text-sm md:text-base text-[#6B4D3F] mt-1.5 max-w-2xl leading-relaxed">
                     Fondasi website sistem keuangan dengan navigasi Single Page Application (SPA), sidebar interaktif, dan indikator loading yang konsisten.
                 </p>
             </div>
 
-            <div class="flex-shrink-0">
-                <a href="/laporan-keuangan-bulanan" data-spa-link class="btn-sunshine">
+            <div class="flex-shrink-0 w-full sm:w-auto">
+                <a href="/laporan-keuangan-bulanan" data-spa-link class="btn-sunshine w-full sm:w-auto justify-center">
                     <span>Buka Laporan Bulanan</span>
                     <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M5 12h14" />
@@ -33,80 +33,80 @@
         </div>
     </div>
 
-    <!-- Summary Stat Cards Placeholder -->
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-5 mb-6">
+    <!-- Summary Stat Cards -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 mb-6">
         <!-- Card 1 -->
-        <div class="card-theme p-5 sm:p-6">
+        <div class="card-theme p-4 sm:p-5 lg:p-6 flex flex-col justify-between">
             <div class="flex items-center justify-between mb-3">
                 <span class="text-xs font-bold uppercase tracking-wider text-[#8E7467]">Alokasi Pagu Anggaran</span>
-                <div class="w-9 h-9 rounded-xl bg-[#FCFAF2] border border-[#E5D6A0] flex items-center justify-center text-[#4B2E21]">
+                <div class="w-9 h-9 rounded-xl bg-[#FFF8E1] border border-[#FFE082] flex items-center justify-center text-[#4B2E21] flex-shrink-0">
                     <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
                     </svg>
                 </div>
             </div>
-            <div class="text-2xl sm:text-3xl font-extrabold text-[#4B2E21]">Rp 45.280.000.000</div>
-            <div class="mt-2.5 flex items-center gap-1.5 text-xs text-[#6B4D3F]">
+            <div class="text-xl sm:text-2xl lg:text-3xl font-extrabold text-[#4B2E21] break-words">Rp 45.280.000.000</div>
+            <div class="mt-2.5 flex flex-wrap items-center gap-1.5 text-xs text-[#6B4D3F]">
                 <span class="font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">100% Pagu Terdaftar</span>
                 <span>Tahun 2026</span>
             </div>
         </div>
 
         <!-- Card 2 -->
-        <div class="card-theme p-5 sm:p-6">
+        <div class="card-theme p-4 sm:p-5 lg:p-6 flex flex-col justify-between">
             <div class="flex items-center justify-between mb-3">
                 <span class="text-xs font-bold uppercase tracking-wider text-[#8E7467]">Realisasi Keuangan</span>
-                <div class="w-9 h-9 rounded-xl bg-[#F2E6B3] border border-[#E5D6A0] flex items-center justify-center text-[#4B2E21]">
+                <div class="w-9 h-9 rounded-xl bg-[#FFD54F] border border-[#FFE082] flex items-center justify-center text-[#4B2E21] flex-shrink-0">
                     <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <polyline points="22 7 13.5 15.5 8.5 10.5 2 17" />
                         <polyline points="16 7 22 7 22 13" />
                     </svg>
                 </div>
             </div>
-            <div class="text-2xl sm:text-3xl font-extrabold text-[#4B2E21]">Rp 32.740.500.000</div>
-            <div class="mt-2.5 flex items-center gap-1.5 text-xs text-[#6B4D3F]">
-                <span class="font-bold text-[#4B2E21] bg-[#FCFAF2] px-2 py-0.5 rounded-full border border-[#E5D6A0]">72,3% Terserap</span>
+            <div class="text-xl sm:text-2xl lg:text-3xl font-extrabold text-[#4B2E21] break-words">Rp 32.740.500.000</div>
+            <div class="mt-2.5 flex flex-wrap items-center gap-1.5 text-xs text-[#6B4D3F]">
+                <span class="font-bold text-[#4B2E21] bg-[#FFF8E1] px-2 py-0.5 rounded-full border border-[#FFE082]">72,3% Terserap</span>
                 <span>s.d. Bulan Berjalan</span>
             </div>
         </div>
 
         <!-- Card 3 -->
-        <div class="card-theme p-5 sm:p-6">
+        <div class="card-theme p-4 sm:p-5 lg:p-6 flex flex-col justify-between sm:col-span-2 lg:col-span-1">
             <div class="flex items-center justify-between mb-3">
                 <span class="text-xs font-bold uppercase tracking-wider text-[#8E7467]">Sisa Anggaran Kas</span>
-                <div class="w-9 h-9 rounded-xl bg-[#FCFAF2] border border-[#E5D6A0] flex items-center justify-center text-[#4B2E21]">
+                <div class="w-9 h-9 rounded-xl bg-[#FFF8E1] border border-[#FFE082] flex items-center justify-center text-[#4B2E21] flex-shrink-0">
                     <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <rect width="20" height="14" x="2" y="5" rx="2" />
                         <line x1="2" x2="22" y1="10" y2="10" />
                     </svg>
                 </div>
             </div>
-            <div class="text-2xl sm:text-3xl font-extrabold text-[#4B2E21]">Rp 12.539.500.000</div>
-            <div class="mt-2.5 flex items-center gap-1.5 text-xs text-[#6B4D3F]">
-                <span class="font-bold text-[#4B2E21] bg-[#F2E6B3] px-2 py-0.5 rounded-full border border-[#E5D6A0]">27,7% Saldo Bebas</span>
+            <div class="text-xl sm:text-2xl lg:text-3xl font-extrabold text-[#4B2E21] break-words">Rp 12.539.500.000</div>
+            <div class="mt-2.5 flex flex-wrap items-center gap-1.5 text-xs text-[#6B4D3F]">
+                <span class="font-bold text-[#4B2E21] bg-[#FFD54F] px-2 py-0.5 rounded-full border border-[#FFE082]">27,7% Saldo Bebas</span>
                 <span>Tersedia</span>
             </div>
         </div>
     </div>
 
     <!-- Clean Foundation Info Card -->
-    <div class="card-theme p-6 sm:p-7">
+    <div class="card-theme p-5 sm:p-7">
         <div class="flex items-center gap-3 mb-4 pb-3 border-b border-[rgba(75,46,33,0.12)]">
-            <div class="w-8 h-8 rounded-lg bg-[#F2E6B3] text-[#4B2E21] flex items-center justify-center font-bold">
+            <div class="w-8 h-8 rounded-lg bg-[#FFD54F] text-[#4B2E21] flex items-center justify-center font-bold flex-shrink-0 shadow-xs">
                 ⚡
             </div>
             <div>
-                <h4 class="text-base font-bold text-[#4B2E21]">Fondasi Navigasi SPA & Loading Indicator</h4>
+                <h4 class="text-sm sm:text-base font-bold text-[#4B2E21]">Fondasi Navigasi SPA & Loading Indicator</h4>
                 <p class="text-xs text-[#8E7467]">Pengujian transisi antar halaman tanpa full page reload</p>
             </div>
         </div>
 
-        <p class="text-sm text-[#6B4D3F] leading-relaxed mb-4">
+        <p class="text-xs sm:text-sm text-[#6B4D3F] leading-relaxed mb-4">
             Navigasi pada aplikasi ini mengadopsi prinsip <strong>Single Page Application (SPA)</strong>. Saat Anda mengklik menu pada sidebar atau tautan di dalam halaman, indikator progres pada bagian atas akan aktif, URL browser diperbarui via <code>History API</code>, dan halaman berganti secara instan tanpa memuat ulang seluruh dokumen.
         </p>
 
         <div class="flex flex-wrap gap-3">
-            <a href="/laporan-keuangan-bulanan" data-spa-link class="btn-sunshine text-xs">
+            <a href="/laporan-keuangan-bulanan" data-spa-link class="btn-sunshine text-xs w-full sm:w-auto justify-center">
                 <span>Coba Navigasi: Laporan Keuangan Bulanan</span>
                 <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
             </a>

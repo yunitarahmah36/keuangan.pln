@@ -233,22 +233,22 @@ class SpaRouter {
 
         dropzone.dataset.initialized = 'true';
 
+        const notification = document.getElementById('import-notification');
+
+        const showNotification = (message, isSuccess = true) => {
+            if (!notification) return;
+            notification.textContent = message;
+            notification.className = isSuccess
+                ? 'mb-6 p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm font-semibold flex items-center gap-2.5 transition-all'
+                : 'mb-6 p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-sm font-semibold flex items-center gap-2.5 transition-all';
+            notification.classList.remove('hidden');
+            notification.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        };
+
         const formatSize = (bytes) => {
             if (bytes < 1024) return `${bytes} B`;
             if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`;
             return `${(bytes / 1048576).toFixed(2)} MB`;
-        };
-
-        const handleFile = (file) => {
-            if (!file) return;
-            if (fileNameEl) fileNameEl.textContent = file.name;
-            if (fileSizeEl) fileSizeEl.textContent = formatSize(file.size);
-
-            if (defaultContent) defaultContent.classList.add('hidden');
-            if (selectedContent) {
-                selectedContent.classList.remove('hidden');
-                selectedContent.classList.add('flex');
-            }
         };
 
         const resetFile = () => {
@@ -257,6 +257,25 @@ class SpaRouter {
             if (selectedContent) {
                 selectedContent.classList.add('hidden');
                 selectedContent.classList.remove('flex');
+            }
+        };
+
+        const handleFile = (file) => {
+            if (!file) return;
+
+            if (!file.name.toLowerCase().endsWith('.xlsx')) {
+                showNotification('Format file tidak didukung! Sistem hanya menerima file berformat .xlsx', false);
+                resetFile();
+                return;
+            }
+
+            if (fileNameEl) fileNameEl.textContent = file.name;
+            if (fileSizeEl) fileSizeEl.textContent = formatSize(file.size);
+
+            if (defaultContent) defaultContent.classList.add('hidden');
+            if (selectedContent) {
+                selectedContent.classList.remove('hidden');
+                selectedContent.classList.add('flex');
             }
         };
 
@@ -329,19 +348,8 @@ class SpaRouter {
         const importForm = document.getElementById('form-import-laporan');
         const submitBtn = document.getElementById('btn-submit-import');
         const submitText = document.getElementById('btn-submit-import-text');
-        const notification = document.getElementById('import-notification');
         const tableBody = document.getElementById('import-history-tbody');
         const countBadge = document.getElementById('import-history-count-badge');
-
-        const showNotification = (message, isSuccess = true) => {
-            if (!notification) return;
-            notification.textContent = message;
-            notification.className = isSuccess
-                ? 'mb-6 p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm font-semibold flex items-center gap-2.5 transition-all'
-                : 'mb-6 p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-sm font-semibold flex items-center gap-2.5 transition-all';
-            notification.classList.remove('hidden');
-            notification.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        };
 
         const updateRowNumbers = () => {
             if (!tableBody) return;

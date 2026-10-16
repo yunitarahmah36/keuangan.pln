@@ -47,12 +47,12 @@ class LaporanKeuanganController extends Controller
     public function import(Request $request): JsonResponse|RedirectResponse
     {
         $validated = $request->validate([
-            'file' => 'required|file|mimes:xlsx,xls',
+            'file' => 'required|file|mimes:xlsx',
             'bulan' => 'required|integer|between:1,12',
             'tahun' => 'required|integer|between:2000,2100',
         ], [
-            'file.required' => 'Pilih file Excel (.xlsx / .xls) terlebih dahulu.',
-            'file.mimes' => 'Format file harus berupa .xlsx atau .xls.',
+            'file.required' => 'Pilih file Excel (.xlsx) terlebih dahulu.',
+            'file.mimes' => 'Format file harus berupa .xlsx.',
             'bulan.required' => 'Silakan pilih bulan laporan.',
             'tahun.required' => 'Silakan pilih tahun laporan.',
         ]);

@@ -67,4 +67,18 @@ class LaporanKeuanganTest extends TestCase
             'status' => 'Berhasil',
         ]);
     }
+
+    public function test_rejects_non_xlsx_file(): void
+    {
+        $fakeFile = UploadedFile::fake()->create('Laporan_Test_Okt2026.xls', 100);
+
+        $response = $this->postJson('/laporan-keuangan-bulanan/import', [
+            'file' => $fakeFile,
+            'bulan' => 10,
+            'tahun' => 2026,
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['file']);
+    }
 }
