@@ -12,8 +12,8 @@
             </svg>
         </div>
         <div>
-            <h1 class="text-sm font-extrabold tracking-tight text-[#3E2723] leading-tight">KEUANGAN PLN</h1>
-            <p class="text-[11px] font-semibold text-[#846850]">Sistem Manajemen Keuangan</p>
+            <h1 class="text-sm font-extrabold tracking-tight text-[#4B2E21] leading-tight">KEUANGAN PLN</h1>
+            <p class="text-[11px] font-semibold text-[#6B4D3F]">Sistem Manajemen Keuangan</p>
         </div>
     </div>
 

@@ -399,14 +399,14 @@ class SpaRouter {
                         // Create new row
                         const historyItem = data.data;
                         const newRow = document.createElement('tr');
-                        newRow.className = 'hover:bg-[#FFFDF7] transition-all bg-emerald-50/50';
+                        newRow.className = 'hover:bg-[#FCFAF3] transition-all bg-[#FCFAF2]';
                         newRow.setAttribute('data-history-id', historyItem.id);
                         newRow.innerHTML = `
-                            <td class="py-3.5 px-5 text-center font-semibold text-[#64748B] history-row-number">1</td>
-                            <td class="py-3.5 px-5 font-semibold text-[#1E293B]">${historyItem.periode}</td>
-                            <td class="py-3.5 px-5 font-medium text-[#475569]">
+                            <td class="py-3.5 px-5 text-center font-semibold text-[#8E7467] history-row-number">1</td>
+                            <td class="py-3.5 px-5 font-semibold text-[#4B2E21]">${historyItem.periode}</td>
+                            <td class="py-3.5 px-5 font-medium text-[#6B4D3F]">
                                 <div class="flex items-center gap-2">
-                                    <svg class="w-4 h-4 text-emerald-600 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <svg class="w-4 h-4 text-[#4B2E21] flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
                                         <polyline points="14 2 14 8 20 8"></polyline>
                                     </svg>
@@ -415,7 +415,7 @@ class SpaRouter {
                                     </span>
                                 </div>
                             </td>
-                            <td class="py-3.5 px-5 text-[#64748B]">${historyItem.waktu_import}</td>
+                            <td class="py-3.5 px-5 text-[#8E7467]">${historyItem.waktu_import}</td>
                             <td class="py-3.5 px-5 text-center">
                                 <span class="badge-status-berhasil">${historyItem.status}</span>
                             </td>
@@ -430,7 +430,7 @@ class SpaRouter {
                             tableBody.prepend(newRow);
                             updateRowNumbers();
                             setTimeout(() => {
-                                newRow.classList.remove('bg-emerald-50/50');
+                                newRow.classList.remove('bg-[#FCFAF2]');
                             }, 2500);
                         }
 
