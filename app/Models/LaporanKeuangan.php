@@ -16,6 +16,7 @@ class LaporanKeuangan extends Model
         'nama_file',
         'path_file',
         'status',
+        'sheet_mapping',
     ];
 
     protected function casts(): array
@@ -23,6 +24,7 @@ class LaporanKeuangan extends Model
         return [
             'bulan' => 'integer',
             'tahun' => 'integer',
+            'sheet_mapping' => 'array',
         ];
     }
 

@@ -51,6 +51,12 @@
         </div>
     </div>
 
+    <!-- Notification Toast Banner -->
+    <div id="excel-alert-banner" class="hidden mb-3 p-3 rounded-xl border text-xs font-semibold flex items-center justify-between gap-3 shadow-xs transition-all">
+        <div class="flex items-center gap-2" id="excel-alert-message"></div>
+        <button type="button" onclick="document.getElementById('excel-alert-banner').classList.add('hidden')" class="text-xs font-bold opacity-70 hover:opacity-100">&times;</button>
+    </div>
+
     <!-- MAIN EXCEL ONLINE WINDOW WORKSPACE -->
     <div id="excel-online-window" class="bg-white rounded-2xl border border-[#D4D4D4] shadow-card overflow-hidden transition-all flex flex-col font-sans">
         
@@ -69,7 +75,7 @@
                         <h2 class="text-xs sm:text-sm font-bold text-white tracking-wide truncate">
                             {{ $laporan->nama_file }}
                         </h2>
-                        <span class="hidden md:inline-flex items-center gap-1 text-[10px] bg-white/20 px-2 py-0.5 rounded-full font-medium">
+                        <span class="hidden md:inline-flex items-center gap-1 text-[10px] bg-white/20 px-2 py-0.5 rounded-full font-medium" id="cloud-sync-status">
                             <svg class="w-2.5 h-2.5 text-emerald-200" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
                                 <polyline points="20 6 9 17 4 12"></polyline>
                             </svg>
@@ -83,8 +89,24 @@
                 </div>
             </div>
 
-            <!-- Right Controls: Cloud Status & Actions -->
+            <!-- Right Controls: Tombol Simpan & Actions -->
             <div class="flex items-center gap-2 flex-shrink-0">
+                <!-- Tombol Simpan Perubahan -->
+                <button type="button"
+                        id="btn-save-spreadsheet"
+                        class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#FFD54F] hover:bg-[#FFCA28] text-[#4B2E21] text-xs font-bold shadow-xs hover:shadow transition-all active:scale-95 cursor-pointer">
+                    <svg id="save-icon-idle" class="w-4 h-4 text-[#4B2E21]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                        <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                        <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                        <polyline points="7 3 7 8 15 8"></polyline>
+                    </svg>
+                    <svg id="save-icon-loading" class="hidden w-4 h-4 text-[#4B2E21] animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                        <circle cx="12" cy="12" r="10" stroke-opacity="0.25"></circle>
+                        <path d="M12 2a10 10 0 0 1 10 10"></path>
+                    </svg>
+                    <span id="btn-save-text">Simpan Perubahan</span>
+                </button>
+
                 <span class="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-black/20 text-[11px] font-semibold text-white/90">
                     <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
                     AutoSave Nyala
@@ -198,12 +220,12 @@
 
             <!-- AutoSum & Filter -->
             <div class="flex items-center gap-2">
-                <button type="button" class="flex items-center gap-1 px-2 py-1 hover:bg-[#F3F2F1] rounded text-[11px] font-semibold text-[#323130]">
+                <button type="button" id="btn-autosum-trigger" class="flex items-center gap-1 px-2 py-1 hover:bg-[#F3F2F1] rounded text-[11px] font-semibold text-[#323130] cursor-pointer">
                     <span class="font-bold text-[#107C41]">∑</span>
                     <span>AutoSum</span>
                 </button>
                 <button type="button" class="flex items-center gap-1 px-2 py-1 hover:bg-[#F3F2F1] rounded text-[11px] font-semibold text-[#323130]">
-                    <svg class="w-3 h-3 text-[#605E5C]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <svg class="w-3.5 h-3.5 text-[#605E5C]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
                     </svg>
                     <span>Filter</span>
@@ -223,20 +245,20 @@
                 fx
             </div>
 
-            <!-- Formula Input Box -->
+            <!-- Formula Input Box (Editable) -->
             <input type="text"
                    id="excel-formula-input"
-                   readonly
-                   class="flex-1 bg-white border border-[#D2D0CE] rounded px-3 py-0.5 text-xs font-mono text-[#323130] focus:outline-none focus:border-[#107C41]"
-                   value="=LAPORAN_KEUANGAN_PLN(&quot;{{ $activeSheet }}&quot;)">
+                   class="flex-1 bg-white border border-[#D2D0CE] focus:border-[#107C41] focus:ring-1 focus:ring-[#107C41] rounded px-3 py-1 text-xs font-mono text-[#323130] focus:outline-none transition-colors"
+                   placeholder="Pilih sel untuk melihat atau mengedit nilai/rumus (misal: =SUM(B2:B5))..."
+                   value="">
         </div>
 
         <!-- 5. MAIN SPREADSHEET TABLE GRID -->
-        <div class="flex-1 overflow-auto bg-white min-h-[440px] max-h-[580px] relative select-text" id="spreadsheet-container">
+        <div class="flex-1 overflow-auto bg-white min-h-[460px] max-h-[600px] relative select-text" id="spreadsheet-container">
             <table class="w-full text-left text-xs border-collapse min-w-[900px]" id="excel-grid-table">
-                <!-- Grid Column Headers (A, B, C, D, E, F, G, H) -->
-                <thead class="sticky top-0 z-10 bg-[#F3F2F1] shadow-2xs select-none">
-                    <tr class="border-b border-[#D4D4D4] text-[#605E5C] font-semibold text-[11px]">
+                <!-- Grid Column Headers (A, B, C, D, ...) -->
+                <thead class="sticky top-0 z-10 bg-[#F3F2F1] shadow-2xs select-none" id="excel-grid-thead">
+                    <tr class="border-b border-[#D4D4D4] text-[#605E5C] font-semibold text-[11px]" id="excel-header-row">
                         <th class="w-10 py-1.5 px-2 text-center bg-[#EDEBE9] border-r border-[#D4D4D4] font-bold"></th>
                         <th class="py-1.5 px-3 text-center border-r border-[#D4D4D4] min-w-[50px]">A</th>
                         <th class="py-1.5 px-3 text-center border-r border-[#D4D4D4] min-w-[130px]">B</th>
@@ -249,7 +271,18 @@
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-[#E1DFDD] font-sans text-[#201F1E]" id="excel-grid-tbody">
-                    <!-- Populated dynamically via JavaScript depending on selected activeSheet -->
+                    <!-- Loading skeleton initially -->
+                    <tr>
+                        <td colspan="9" class="py-20 text-center text-[#8E7467]">
+                            <div class="flex flex-col items-center justify-center gap-2">
+                                <svg class="w-7 h-7 text-[#107C41] animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <circle cx="12" cy="12" r="10" stroke-opacity="0.2"></circle>
+                                    <path d="M12 2a10 10 0 0 1 10 10"></path>
+                                </svg>
+                                <span class="font-bold text-xs text-[#4B2E21]">Memuat sel dari sheet asli...</span>
+                            </div>
+                        </td>
+                    </tr>
                 </tbody>
             </table>
         </div>
@@ -260,13 +293,13 @@
             <div class="flex items-center gap-1 overflow-x-auto no-scrollbar flex-1 py-0.5">
                 <!-- Nav Panah Sheet -->
                 <div class="flex items-center text-[#605E5C] pr-1 border-r border-[#D4D4D4]">
-                    <button type="button" class="p-1 hover:bg-[#EDEBE9] rounded" title="Sheet Sebelumnya">◀</button>
-                    <button type="button" class="p-1 hover:bg-[#EDEBE9] rounded" title="Sheet Berikutnya">▶</button>
+                    <button type="button" id="btn-scroll-sheet-left" class="p-1 hover:bg-[#EDEBE9] rounded" title="Sheet Sebelumnya">◀</button>
+                    <button type="button" id="btn-scroll-sheet-right" class="p-1 hover:bg-[#EDEBE9] rounded" title="Sheet Berikutnya">▶</button>
                 </div>
 
                 <!-- Tabs Container -->
                 <div class="flex items-center gap-1 min-w-max" id="excel-sheet-tabs-container">
-                    @php $allSheetsInGroup = $kelompokSheet[$activeKelompok] ?? ['NERACA']; @endphp
+                    @php $allSheetsInGroup = $kelompokSheet[$activeKelompok] ?? [$activeSheet]; @endphp
                     @foreach ($allSheetsInGroup as $sName)
                         @php $isActive = ($sName === $activeSheet); @endphp
                         <button type="button"
@@ -292,9 +325,9 @@
         <!-- 7. EXCEL STATUS BAR -->
         <div class="bg-[#107C41] text-white px-4 py-1.5 flex items-center justify-between text-[11px] font-medium select-none">
             <div class="flex items-center gap-4">
-                <span class="font-bold tracking-wider">SIAP</span>
-                <span class="text-white/80 hidden sm:inline">&bull; 100% Sel Terbaca</span>
-                <span class="text-white/80" id="excel-stat-sum">Total Saldo: Menghitung...</span>
+                <span class="font-bold tracking-wider" id="excel-ready-badge">SIAP</span>
+                <span class="text-white/80 hidden sm:inline">&bull; Terhubung ke Workbook Asli</span>
+                <span class="text-white/80" id="excel-stat-sum">Menghubungkan ke data file...</span>
             </div>
 
             <div class="flex items-center gap-3">
@@ -302,7 +335,7 @@
                     <span>Sheet: <strong class="text-white font-mono" id="status-bar-sheet-name">{{ $activeSheet }}</strong></span>
                 </div>
                 <div class="flex items-center gap-1 bg-black/15 px-2 py-0.5 rounded text-[10px]">
-                    <span>100%</span>
+                    <span id="status-bar-unsaved">0 Perubahan</span>
                 </div>
             </div>
         </div>
@@ -314,67 +347,92 @@
 <script>
 (function() {
     const rawKelompokData = @json($kelompokSheet);
+    const laporanId = {{ $laporan->id }};
+    const csrfToken = '{{ csrf_token() }}';
+
     let currentKelompok = @json($activeKelompok);
     let currentSheet = @json($activeSheet);
 
-    // Database data per sheet
-    const sheetDatabase = {
-        'NERACA': [
-            { no: 1, kode: '100.00.00', uraian: 'ASET LANCAR - KAS & SETARA KAS', awal: '28.450.000.000', debet: '12.800.000.000', kredit: '9.250.000.000', akhir: '32.000.000.000', status: 'Valid' },
-            { no: 2, kode: '110.00.00', uraian: 'PIUTANG USAHA TENAGA LISTRIK (TARIF REGULER & INDUSTRI)', awal: '45.120.000.000', debet: '38.400.000.000', kredit: '36.900.000.000', akhir: '46.620.000.000', status: 'Valid' },
-            { no: 3, kode: '120.00.00', uraian: 'PERSEDIAAN MATERIAL DISTRIBUSI & BBM PEMBANGKIT', awal: '18.750.000.000', debet: '8.450.000.000', kredit: '7.890.000.000', akhir: '19.310.000.000', status: 'Valid' },
-            { no: 4, kode: '150.00.00', uraian: 'ASET TETAP - INSTALASI PEMBANGKIT, TRANSMISI & GARDU', awal: '310.800.000.000', debet: '4.200.000.000', kredit: '1.850.000.000', akhir: '313.150.000.000', status: 'Valid' },
-            { no: 5, kode: '200.00.00', uraian: 'LIABILITAS JANGKA PENDEK - HUTANG USAHA & VENDOR ENERGI', awal: '22.300.000.000', debet: '14.500.000.000', kredit: '16.800.000.000', akhir: '24.600.000.000', status: 'Valid' },
-            { no: 6, kode: '300.00.00', uraian: 'EKUITAS - MODAL DISYETOR & SALDO LABA DITAHAN', awal: '380.820.000.000', debet: '0', kredit: '5.660.000.000', akhir: '386.480.000.000', status: 'Valid' },
-        ],
-        'INCOME': [
-            { no: 1, kode: '400.01.00', uraian: 'PENDAPATAN PENJUALAN TENAGA LISTRIK (PASCABAYAR)', awal: '0', debet: '0', kredit: '64.250.000.000', akhir: '64.250.000.000', status: 'Valid' },
-            { no: 2, kode: '400.02.00', uraian: 'PENDAPATAN PENJUALAN TENAGA LISTRIK (TOKEN PRABAYAR)', awal: '0', debet: '0', kredit: '42.180.000.000', akhir: '42.180.000.000', status: 'Valid' },
-            { no: 3, kode: '410.00.00', uraian: 'PENDAPATAN BIAYA PENYAMBUNGAN & PERUBAHAN DAYA', awal: '0', debet: '0', kredit: '3.420.000.000', akhir: '3.420.000.000', status: 'Valid' },
-            { no: 4, kode: '500.01.00', uraian: 'BEBAN BAHAN BAKAR & PELUMAS PEMBANGKITAN', awal: '0', debet: '38.650.000.000', kredit: '0', akhir: '38.650.000.000', status: 'Valid' },
-            { no: 5, kode: '510.00.00', uraian: 'BEBAN PEMELIHARAAN TRANSMISI & JARINGAN DISTRIBUSI', awal: '0', debet: '12.400.000.000', kredit: '0', akhir: '12.400.000.000', status: 'Valid' },
-            { no: 6, kode: '520.00.00', uraian: 'BEBAN PEGAWAI, GAJI & TUNJANGAN OPERASIONAL', awal: '0', debet: '16.890.000.000', kredit: '0', akhir: '16.890.000.000', status: 'Valid' },
-        ],
-        'LabaRugiNew': [
-            { no: 1, kode: 'LR-01', uraian: 'TOTAL PENDAPATAN OPERASIONAL KETENAGALISTRIKAN', awal: '0', debet: '0', kredit: '109.850.000.000', akhir: '109.850.000.000', status: 'Valid' },
-            { no: 2, kode: 'LR-02', uraian: 'TOTAL BEBAN POKOK PENYEDIAAN TENAGA LISTRIK', awal: '0', debet: '84.220.000.000', kredit: '0', akhir: '84.220.000.000', status: 'Valid' },
-            { no: 3, kode: 'LR-03', uraian: 'LABA OPERASI SEBELUM BEBAN BUNGA & PAJAK (EBIT)', awal: '0', debet: '0', kredit: '25.630.000.000', akhir: '25.630.000.000', status: 'Valid' },
-            { no: 4, kode: 'LR-04', uraian: 'BEBAN KEUANGAN & BUNGA PINJAMAN INVESTASI', awal: '0', debet: '4.850.000.000', kredit: '0', akhir: '4.850.000.000', status: 'Valid' },
-            { no: 5, kode: 'LR-05', uraian: 'LABA BERSIH PERIODE BERJALAN', awal: '0', debet: '0', kredit: '20.780.000.000', akhir: '20.780.000.000', status: 'Valid' },
-        ],
-        'CashFlow': [
-            { no: 1, kode: 'CF-01', uraian: 'ARUS KAS DARI AKTIVITAS OPERASI - PENERIMAAN KONSUMEN', awal: '0', debet: '0', kredit: '106.430.000.000', akhir: '106.430.000.000', status: 'Valid' },
-            { no: 2, kode: 'CF-02', uraian: 'PEMBAYARAN ENERGI KEPADA PEMASOK & VENDOR', awal: '0', debet: '67.940.000.000', kredit: '0', akhir: '-67.940.000.000', status: 'Valid' },
-            { no: 3, kode: 'CF-03', uraian: 'PEMBAYARAN BEBAN KEPEGAWAIAN & KESEJAHTERAAN', awal: '0', debet: '16.890.000.000', kredit: '0', akhir: '-16.890.000.000', status: 'Valid' },
-            { no: 4, kode: 'CF-04', uraian: 'ARUS KAS DARI AKTIVITAS INVESTASI - PENGADAAN ASET GARDU', awal: '0', debet: '12.450.000.000', kredit: '0', akhir: '-12.450.000.000', status: 'Valid' },
-            { no: 5, kode: 'CF-05', uraian: 'SALDO KAS & SETARA KAS AKHIR PERIODE', awal: '28.450.000.000', debet: '3.550.000.000', kredit: '0', akhir: '32.000.000.000', status: 'Valid' },
-        ],
-        'BukuBesarNew': [
-            { no: 1, kode: '101.01.01', uraian: 'KAS OPERASIONAL KANTOR WILAYAH & UNIT PELAKSANA', awal: '1.250.000.000', debet: '4.850.000.000', kredit: '4.620.000.000', akhir: '1.480.000.000', status: 'Valid' },
-            { no: 2, kode: '101.02.01', uraian: 'BANK PENAMPUNG PENERIMAAN REKENING LISTRIK (BANK MANDIRI/BRI)', awal: '18.400.000.000', debet: '78.200.000.000', kredit: '75.000.000.000', akhir: '21.600.000.000', status: 'Valid' },
-            { no: 3, kode: '101.03.01', uraian: 'BANK PENGELUARAN OPERASIONAL & PEMBAYARAN VENDOR', awal: '8.800.000.000', debet: '52.100.000.000', kredit: '51.980.000.000', akhir: '8.920.000.000', status: 'Valid' },
-            { no: 4, kode: '105.01.00', uraian: 'UANG MUKA PEMBELIAN MATERIAL & JASA VENDOR', awal: '2.450.000.000', debet: '3.600.000.000', kredit: '3.150.000.000', akhir: '2.900.000.000', status: 'Valid' },
-            { no: 5, kode: '201.01.00', uraian: 'HUTANG USAHA PENGADAAN MATERIAL DISTRIBUSI', awal: '7.600.000.000', debet: '6.200.000.000', kredit: '8.100.000.000', akhir: '9.500.000.000', status: 'Valid' },
-        ],
-    };
+    // State management
+    let activeCell = null;
+    let modifiedCells = {}; // map of { [ref]: { ref, value, formula } }
+    let sheetCache = {};    // map of { [sheetName]: data }
 
-    function getRowsForSheet(sheetName, groupName) {
-        if (sheetDatabase[sheetName]) {
-            return sheetDatabase[sheetName];
-        }
+    function showAlert(message, type = 'success') {
+        const banner = document.getElementById('excel-alert-banner');
+        const msgElem = document.getElementById('excel-alert-message');
+        if (!banner || !msgElem) return;
 
-        const prefix = sheetName.replace(/[^A-Za-z0-9]/g, '').substring(0, 4).toUpperCase() || 'POS';
-        return [
-            { no: 1, kode: `${prefix}-101`, uraian: `POS TRANSAKSI UTAMA - ${sheetName} (KELOMPOK: ${groupName.toUpperCase()})`, awal: '14.200.000.000', debet: '6.450.000.000', kredit: '4.200.000.000', akhir: '16.450.000.000', status: 'Valid' },
-            { no: 2, kode: `${prefix}-102`, uraian: `SUB REKAPITULASI BUKU BESAR PEMBANTU ${sheetName}`, awal: '8.650.000.000', debet: '3.120.000.000', kredit: '2.840.000.000', akhir: '8.930.000.000', status: 'Valid' },
-            { no: 3, kode: `${prefix}-103`, uraian: `ALOKASI ANGGARAN & REALISASI BULAN BERJALAN`, awal: '5.400.000.000', debet: '2.750.000.000', kredit: '1.980.000.000', akhir: '6.170.000.000', status: 'Valid' },
-            { no: 4, kode: `${prefix}-104`, uraian: `PENYESUAIAN DAN JURNAL ELIMINASI INTERN`, awal: '1.800.000.000', debet: '850.000.000', kredit: '920.000.000', akhir: '1.730.000.000', status: 'Valid' },
-            { no: 5, kode: `${prefix}-105`, uraian: `SALDO AKHIR KONSOLIDASI SHEET ${sheetName}`, awal: '30.050.000.000', debet: '13.170.000.000', kredit: '9.940.000.000', akhir: '33.280.000.000', status: 'Valid' },
-        ];
+        banner.className = `mb-3 p-3 rounded-xl border text-xs font-semibold flex items-center justify-between gap-3 shadow-xs transition-all ${
+            type === 'success' 
+                ? 'bg-emerald-50 border-emerald-300 text-emerald-800' 
+                : 'bg-rose-50 border-rose-300 text-rose-800'
+        }`;
+
+        msgElem.innerHTML = `
+            <svg class="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                ${type === 'success' ? '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline>' : '<circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line>'}
+            </svg>
+            <span>${message}</span>
+        `;
+        banner.classList.remove('hidden');
+
+        setTimeout(() => {
+            banner.classList.add('hidden');
+        }, 6000);
     }
 
-    function renderSpreadsheet(sheetName) {
-        currentSheet = sheetName;
+    function evaluateFormula(formulaStr, sheetRows) {
+        if (!formulaStr || !formulaStr.startsWith('=')) {
+            return formulaStr;
+        }
+
+        const upper = formulaStr.toUpperCase().trim();
+
+        // Check for SUM(ColStartRowStart:ColEndRowEnd)
+        const sumMatch = upper.match(/^=SUM\(([A-Z]+)(\d+):([A-Z]+)(\d+)\)$/);
+        if (sumMatch) {
+            const colStart = sumMatch[1];
+            const rowStart = parseInt(sumMatch[2], 10);
+            const colEnd = sumMatch[3];
+            const rowEnd = parseInt(sumMatch[4], 10);
+
+            let total = 0;
+            if (colStart === colEnd) {
+                for (let r = rowStart; r <= rowEnd; r++) {
+                    const rowObj = sheetRows.find(item => item.row === r);
+                    if (rowObj && rowObj.cells) {
+                        const cellRef = `${colStart}${r}`;
+                        const cellVal = rowObj.cells[cellRef]?.val;
+                        if (cellVal !== undefined && cellVal !== null) {
+                            const cleanNum = String(cellVal).replace(/[^\d.-]/g, '');
+                            const num = parseFloat(cleanNum);
+                            if (!isNaN(num)) total += num;
+                        }
+                    }
+                }
+                return total.toLocaleString('id-ID');
+            }
+        }
+
+        // Simple arithmetic fallback: =(100+200)
+        try {
+            const expr = upper.substring(1).replace(/[^0-9+\-*/().]/g, '');
+            if (expr && expr.length > 0 && !/[a-zA-Z]/.test(expr)) {
+                const res = Function(`'use strict'; return (${expr})`)();
+                if (typeof res === 'number' && !isNaN(res)) {
+                    return res.toLocaleString('id-ID');
+                }
+            }
+        } catch (e) {
+            // Keep original if cannot evaluate
+        }
+
+        return formulaStr;
+    }
+
+    function renderSpreadsheetData(sheetData) {
+        const thead = document.getElementById('excel-grid-thead');
         const tbody = document.getElementById('excel-grid-tbody');
         const formulaInput = document.getElementById('excel-formula-input');
         const statusBarSheet = document.getElementById('status-bar-sheet-name');
@@ -383,89 +441,265 @@
 
         if (!tbody) return;
 
-        const rows = getRowsForSheet(sheetName, currentKelompok);
+        const columns = sheetData.columns || ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+        const rows = sheetData.rows || [];
 
-        // Header Title Row (Row 1)
-        let html = `
-            <tr class="bg-[#FAF9F8] border-b border-[#D4D4D4] font-bold text-xs select-none">
-                <td class="py-1 px-2 text-center bg-[#EDEBE9] border-r border-[#D4D4D4] text-[#605E5C] font-mono text-[11px]">1</td>
-                <td colspan="8" class="py-2.5 px-4 text-[#107C41] font-extrabold text-sm uppercase tracking-wide bg-emerald-50/50">
-                    LAPORAN KEUANGAN KONSOLIDASI PLN &bull; SHEET: ${sheetName}
-                </td>
-            </tr>
-            <tr class="bg-[#FAF8F4] border-b border-[#D4D4D4] font-bold text-[11px] text-[#4B2E21] select-none">
-                <td class="py-1.5 px-2 text-center bg-[#EDEBE9] border-r border-[#D4D4D4] text-[#605E5C] font-mono">2</td>
-                <td class="py-2 px-3 text-center border-r border-[#D4D4D4]">No</td>
-                <td class="py-2 px-3 border-r border-[#D4D4D4]">Kode Akun / Pos</td>
-                <td class="py-2 px-4 border-r border-[#D4D4D4]">Uraian Pos Keuangan</td>
-                <td class="py-2 px-3 text-right border-r border-[#D4D4D4]">Saldo Awal (Rp)</td>
-                <td class="py-2 px-3 text-right border-r border-[#D4D4D4]">Mutasi Debet (Rp)</td>
-                <td class="py-2 px-3 text-right border-r border-[#D4D4D4]">Mutasi Kredit (Rp)</td>
-                <td class="py-2 px-3 text-right border-r border-[#D4D4D4]">Saldo Akhir (Rp)</td>
-                <td class="py-2 px-3 text-center border-r border-[#D4D4D4]">Status</td>
-            </tr>
+        // 1. Render Header Columns
+        let headHtml = `
+            <tr class="border-b border-[#D4D4D4] text-[#605E5C] font-semibold text-[11px]">
+                <th class="w-12 py-1.5 px-2 text-center bg-[#EDEBE9] border-r border-[#D4D4D4] font-bold"></th>
         `;
+        columns.forEach(col => {
+            headHtml += `<th class="py-1.5 px-3 text-center border-r border-[#D4D4D4] min-w-[110px] font-bold">${col}</th>`;
+        });
+        headHtml += `</tr>`;
+        thead.innerHTML = headHtml;
 
-        rows.forEach((item, index) => {
-            const rowNumber = index + 3;
-            html += `
-                <tr class="hover:bg-[#F3F2F1] cursor-pointer transition-colors group" data-row-num="${rowNumber}">
-                    <td class="py-2 px-2 text-center bg-[#EDEBE9] group-hover:bg-[#E1DFDD] border-r border-[#D4D4D4] text-[#605E5C] font-mono text-[11px] select-none font-bold">${rowNumber}</td>
-                    <td class="py-2 px-3 text-center font-mono text-[#605E5C] border-r border-[#EDEBE9]">${item.no}</td>
-                    <td class="py-2 px-3 font-mono font-bold text-[#107C41] border-r border-[#EDEBE9]">${item.kode}</td>
-                    <td class="py-2 px-4 font-medium text-[#201F1E] border-r border-[#EDEBE9]">${item.uraian}</td>
-                    <td class="py-2 px-3 text-right font-mono text-[#605E5C] border-r border-[#EDEBE9]">${item.awal}</td>
-                    <td class="py-2 px-3 text-right font-mono font-semibold text-emerald-800 bg-emerald-50/20 border-r border-[#EDEBE9]">${item.debet}</td>
-                    <td class="py-2 px-3 text-right font-mono font-semibold text-rose-800 bg-rose-50/20 border-r border-[#EDEBE9]">${item.kredit}</td>
-                    <td class="py-2 px-3 text-right font-mono font-bold text-[#107C41] border-r border-[#EDEBE9]">${item.akhir}</td>
-                    <td class="py-2 px-3 text-center border-r border-[#EDEBE9]">
-                        <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-[#E8F5E9] text-[#1B5E20] border border-[#C8E6C9]">
-                            ${item.status}
-                        </span>
+        // 2. Render Rows
+        let bodyHtml = '';
+
+        if (rows.length === 0) {
+            bodyHtml = `
+                <tr>
+                    <td colspan="${columns.length + 1}" class="py-16 text-center text-[#8E7467]">
+                        <p class="font-bold text-[#4B2E21]">Sheet ini tidak memiliki data baris.</p>
+                        <p class="text-xs">Sheet kosong atau baru dibuat.</p>
                     </td>
                 </tr>
             `;
+        } else {
+            rows.forEach(rowItem => {
+                const rNum = rowItem.row;
+                bodyHtml += `<tr class="hover:bg-[#F3F2F1] transition-colors" data-row="${rNum}">`;
+                bodyHtml += `<td class="py-1.5 px-2 text-center bg-[#EDEBE9] border-r border-[#D4D4D4] text-[#605E5C] font-mono text-[11px] select-none font-bold">${rNum}</td>`;
+
+                columns.forEach(col => {
+                    const ref = `${col}${rNum}`;
+                    const cellData = rowItem.cells ? rowItem.cells[ref] : null;
+
+                    let displayVal = cellData ? (cellData.val || '') : '';
+                    let formula = cellData ? (cellData.formula || null) : null;
+
+                    // If this cell has been edited locally, override with unsaved value
+                    if (modifiedCells[ref]) {
+                        displayVal = modifiedCells[ref].value;
+                        formula = modifiedCells[ref].formula || formula;
+                    }
+
+                    // Format numbers if looks like financial number
+                    const isFormula = !!formula;
+                    const isModified = !!modifiedCells[ref];
+
+                    bodyHtml += `
+                        <td class="excel-cell py-1.5 px-3 border-r border-[#E1DFDD] font-mono text-xs cursor-cell transition-all relative ${isModified ? 'bg-amber-50 font-semibold' : ''}"
+                            data-ref="${ref}"
+                            data-col="${col}"
+                            data-row="${rNum}"
+                            data-val="${escapeHtml(displayVal)}"
+                            data-formula="${isFormula ? escapeHtml(formula) : ''}">
+                            <div class="truncate max-w-[280px]" title="${escapeHtml(isFormula ? formula : displayVal)}">
+                                ${escapeHtml(displayVal)}
+                            </div>
+                            ${isFormula ? '<span class="absolute top-0.5 right-0.5 w-1.5 h-1.5 bg-[#107C41] rounded-full" title="Rumus: ' + escapeHtml(formula) + '"></span>' : ''}
+                        </td>
+                    `;
+                });
+
+                bodyHtml += `</tr>`;
+            });
+        }
+
+        tbody.innerHTML = bodyHtml;
+
+        // 3. Update Status Bar
+        if (statusBarSheet) statusBarSheet.textContent = sheetData.sheet || currentSheet;
+        if (statSum) statSum.textContent = `Total: ${rows.length} Baris &bull; ${columns.length} Kolom Terbaca`;
+        updateUnsavedCounter();
+
+        // 4. Attach Cell Click Handlers
+        attachCellListeners(sheetData);
+
+        // Select first cell (e.g. A1 or first populated cell)
+        const firstCell = tbody.querySelector('.excel-cell');
+        if (firstCell) {
+            selectCell(firstCell, sheetData);
+        }
+    }
+
+    function escapeHtml(text) {
+        if (text === null || text === undefined) return '';
+        return String(text)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
+    function selectCell(cellElem, sheetData) {
+        const tbody = document.getElementById('excel-grid-tbody');
+        const nameBox = document.getElementById('excel-name-box');
+        const formulaInput = document.getElementById('excel-formula-input');
+
+        tbody.querySelectorAll('.excel-cell').forEach(c => {
+            c.classList.remove('ring-2', 'ring-[#107C41]', 'ring-inset', 'bg-emerald-50/50');
         });
 
-        // Summary Row (AutoSum Total)
-        const summaryRowIndex = rows.length + 3;
-        html += `
-            <tr class="bg-[#F9F9F8] border-t-2 border-b-2 border-double border-[#107C41] font-bold text-xs select-none">
-                <td class="py-2 px-2 text-center bg-[#EDEBE9] border-r border-[#D4D4D4] text-[#605E5C] font-mono text-[11px] font-bold">${summaryRowIndex}</td>
-                <td colspan="3" class="py-2 px-4 text-right uppercase tracking-wider text-[#107C41] border-r border-[#D4D4D4]">
-                    Total Rekapitulasi (AutoSum)
-                </td>
-                <td class="py-2 px-3 text-right font-mono text-[#4B2E21] border-r border-[#D4D4D4]">425.440.000.000</td>
-                <td class="py-2 px-3 text-right font-mono text-emerald-800 border-r border-[#D4D4D4]">73.950.000.000</td>
-                <td class="py-2 px-3 text-right font-mono text-rose-800 border-r border-[#D4D4D4]">71.650.000.000</td>
-                <td class="py-2 px-3 text-right font-mono text-[#107C41] font-extrabold border-r border-[#D4D4D4]">427.740.000.000</td>
-                <td class="py-2 px-3 text-center border-r border-[#D4D4D4]">
-                    <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-[#107C41] text-white">TERVALIDASI</span>
-                </td>
-            </tr>
-        `;
+        cellElem.classList.add('ring-2', 'ring-[#107C41]', 'ring-inset', 'bg-emerald-50/50');
 
-        tbody.innerHTML = html;
+        const ref = cellElem.dataset.ref;
+        const col = cellElem.dataset.col;
+        const row = cellElem.dataset.row;
+        const val = cellElem.dataset.val;
+        const formula = cellElem.dataset.formula;
 
-        // Update Formula bar & status bar
-        if (formulaInput) formulaInput.value = `=SUM(G3:G${summaryRowIndex - 1})`;
-        if (nameBox) nameBox.textContent = `A1`;
-        if (statusBarSheet) statusBarSheet.textContent = sheetName;
-        if (statSum) statSum.textContent = `Total Saldo: Rp 427.740.000.000 (${rows.length} Baris)`;
+        activeCell = { elem: cellElem, ref, col, row, val, formula };
 
-        // Setup cell click listener to update formula bar and namebox
-        const cells = tbody.querySelectorAll('td');
-        cells.forEach(td => {
-            td.addEventListener('click', function() {
-                cells.forEach(c => c.classList.remove('ring-2', 'ring-[#107C41]', 'ring-inset', 'bg-emerald-50/40'));
-                this.classList.add('ring-2', 'ring-[#107C41]', 'ring-inset', 'bg-emerald-50/40');
-                if (formulaInput) formulaInput.value = this.textContent.trim();
-                const parentRow = this.closest('tr');
-                const rowNum = parentRow ? parentRow.dataset.rowNum || '1' : '1';
-                const colLetter = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'][this.cellIndex] || 'A';
-                if (nameBox) nameBox.textContent = `${colLetter}${rowNum}`;
+        if (nameBox) nameBox.textContent = ref;
+        if (formulaInput) {
+            formulaInput.value = formula && formula.length > 0 ? formula : val;
+        }
+    }
+
+    function attachCellListeners(sheetData) {
+        const tbody = document.getElementById('excel-grid-tbody');
+        const cells = tbody.querySelectorAll('.excel-cell');
+
+        cells.forEach(cell => {
+            cell.addEventListener('click', function() {
+                selectCell(this, sheetData);
+            });
+
+            cell.addEventListener('dblclick', function() {
+                selectCell(this, sheetData);
+                const formulaInput = document.getElementById('excel-formula-input');
+                if (formulaInput) {
+                    formulaInput.focus();
+                    formulaInput.select();
+                }
             });
         });
+    }
+
+    function applyFormulaInput(newText) {
+        if (!activeCell || !activeCell.elem) return;
+
+        const ref = activeCell.ref;
+        const currentData = sheetCache[currentSheet];
+        const isFormula = newText.startsWith('=');
+
+        let displayVal = newText;
+        let formula = null;
+
+        if (isFormula) {
+            formula = newText;
+            displayVal = evaluateFormula(newText, currentData ? currentData.rows : []);
+        }
+
+        // Update DOM
+        activeCell.elem.dataset.val = displayVal;
+        activeCell.elem.dataset.formula = formula || '';
+        activeCell.elem.classList.add('bg-amber-50', 'font-semibold');
+
+        const innerDiv = activeCell.elem.querySelector('div');
+        if (innerDiv) {
+            innerDiv.textContent = displayVal;
+            innerDiv.title = formula || displayVal;
+        }
+
+        // Add/update formula dot
+        let dot = activeCell.elem.querySelector('.bg-\\[\\#107C41\\]');
+        if (isFormula) {
+            if (!dot) {
+                dot = document.createElement('span');
+                dot.className = 'absolute top-0.5 right-0.5 w-1.5 h-1.5 bg-[#107C41] rounded-full';
+                activeCell.elem.appendChild(dot);
+            }
+            dot.title = `Rumus: ${formula}`;
+        } else if (dot) {
+            dot.remove();
+        }
+
+        // Store into modifiedCells
+        modifiedCells[ref] = {
+            ref: ref,
+            value: displayVal,
+            formula: formula,
+            calculatedValue: displayVal,
+        };
+
+        // Update active cell reference state
+        activeCell.val = displayVal;
+        activeCell.formula = formula;
+
+        updateUnsavedCounter();
+    }
+
+    function updateUnsavedCounter() {
+        const count = Object.keys(modifiedCells).length;
+        const badge = document.getElementById('status-bar-unsaved');
+        const btnSaveText = document.getElementById('btn-save-text');
+        const btnSave = document.getElementById('btn-save-spreadsheet');
+
+        if (badge) {
+            badge.textContent = `${count} Perubahan Belum Disimpan`;
+            badge.className = count > 0 
+                ? 'flex items-center gap-1 bg-amber-400 text-[#4B2E21] font-bold px-2 py-0.5 rounded text-[10px]' 
+                : 'flex items-center gap-1 bg-black/15 px-2 py-0.5 rounded text-[10px] text-white/80';
+        }
+
+        if (btnSaveText) {
+            btnSaveText.textContent = count > 0 ? `Simpan (${count})` : 'Simpan Perubahan';
+        }
+
+        if (btnSave) {
+            if (count > 0) {
+                btnSave.classList.add('ring-2', 'ring-white', 'animate-pulse');
+            } else {
+                btnSave.classList.remove('ring-2', 'ring-white', 'animate-pulse');
+            }
+        }
+    }
+
+    function fetchSheet(sheetName) {
+        currentSheet = sheetName;
+        const tbody = document.getElementById('excel-grid-tbody');
+        const statusBarSheet = document.getElementById('status-bar-sheet-name');
+        const statSum = document.getElementById('excel-stat-sum');
+
+        if (statusBarSheet) statusBarSheet.textContent = sheetName;
+        if (statSum) statSum.textContent = `Memuat data sheet ${sheetName}...`;
+
+        if (tbody) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="10" class="py-20 text-center text-[#8E7467]">
+                        <div class="flex flex-col items-center justify-center gap-2">
+                            <svg class="w-7 h-7 text-[#107C41] animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="10" stroke-opacity="0.2"></circle>
+                                <path d="M12 2a10 10 0 0 1 10 10"></path>
+                            </svg>
+                            <span class="font-bold text-xs text-[#4B2E21]">Membaca workbook sheet '${sheetName}'...</span>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        }
+
+        fetch(`/laporan-keuangan-bulanan/${laporanId}/sheet-data?sheet=${encodeURIComponent(sheetName)}`)
+            .then(res => res.json())
+            .then(res => {
+                if (res.success && res.data) {
+                    sheetCache[sheetName] = res.data;
+                    renderSpreadsheetData(res.data);
+                } else {
+                    showAlert(res.message || 'Gagal membaca sheet', 'error');
+                }
+            })
+            .catch(err => {
+                console.error(err);
+                showAlert('Gagal menghubungi server untuk membaca sheet Excel.', 'error');
+            });
     }
 
     function switchKelompok(kelompokName) {
@@ -499,8 +733,8 @@
                 tabsContainer.appendChild(btn);
             });
 
-            // Render first sheet of this new group
-            renderSpreadsheet(sheets[0]);
+            // Fetch and render first sheet of this new group
+            fetchSheet(sheets[0]);
         }
     }
 
@@ -519,7 +753,70 @@
             }
         });
 
-        renderSpreadsheet(sheetName);
+        fetchSheet(sheetName);
+    }
+
+    function saveChangesToBackend() {
+        const cellsList = Object.values(modifiedCells);
+        if (cellsList.length === 0) {
+            showAlert('Tidak ada perubahan sel atau rumus untuk disimpan.', 'success');
+            return;
+        }
+
+        const btnSave = document.getElementById('btn-save-spreadsheet');
+        const iconIdle = document.getElementById('save-icon-idle');
+        const iconLoading = document.getElementById('save-icon-loading');
+        const btnText = document.getElementById('btn-save-text');
+
+        if (btnSave) btnSave.disabled = true;
+        if (iconIdle) iconIdle.classList.add('hidden');
+        if (iconLoading) iconLoading.classList.remove('hidden');
+        if (btnText) btnText.textContent = 'Menyimpan...';
+
+        fetch(`/laporan-keuangan-bulanan/${laporanId}/save-cells`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': csrfToken,
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify({
+                sheet: currentSheet,
+                cells: cellsList
+            })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                showAlert(`Berhasil! ${cellsList.length} perubahan sel dan rumus telah tersimpan ke dalam file Excel asli.`, 'success');
+                // Clear modified state
+                modifiedCells = {};
+                // Clear cache so next visit gets fresh data from disk
+                delete sheetCache[currentSheet];
+
+                // Remove amber highlight from cells
+                const tbody = document.getElementById('excel-grid-tbody');
+                if (tbody) {
+                    tbody.querySelectorAll('.excel-cell.bg-amber-50').forEach(c => {
+                        c.classList.remove('bg-amber-50', 'font-semibold');
+                    });
+                }
+
+                updateUnsavedCounter();
+            } else {
+                showAlert(data.message || 'Gagal menyimpan ke file Excel.', 'error');
+            }
+        })
+        .catch(err => {
+            console.error(err);
+            showAlert('Terjadi kesalahan jaringan saat menyimpan file Excel.', 'error');
+        })
+        .finally(() => {
+            if (btnSave) btnSave.disabled = false;
+            if (iconIdle) iconIdle.classList.remove('hidden');
+            if (iconLoading) iconLoading.classList.add('hidden');
+            if (btnText) btnText.textContent = 'Simpan Perubahan';
+        });
     }
 
     function initExcelOnline() {
@@ -537,6 +834,43 @@
             });
         });
 
+        // Formula Bar Enter Listener
+        const formulaInput = document.getElementById('excel-formula-input');
+        if (formulaInput) {
+            formulaInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    applyFormulaInput(this.value);
+                }
+            });
+            formulaInput.addEventListener('blur', function() {
+                if (activeCell && this.value !== (activeCell.formula || activeCell.val)) {
+                    applyFormulaInput(this.value);
+                }
+            });
+        }
+
+        // AutoSum Trigger Button
+        const autosumBtn = document.getElementById('btn-autosum-trigger');
+        if (autosumBtn) {
+            autosumBtn.addEventListener('click', function() {
+                if (!activeCell) return;
+                const col = activeCell.col;
+                const row = parseInt(activeCell.row, 10);
+                const formula = `=SUM(${col}2:${col}${Math.max(2, row - 1)})`;
+                if (formulaInput) {
+                    formulaInput.value = formula;
+                    applyFormulaInput(formula);
+                }
+            });
+        }
+
+        // Save Changes Button
+        const saveBtn = document.getElementById('btn-save-spreadsheet');
+        if (saveBtn) {
+            saveBtn.addEventListener('click', saveChangesToBackend);
+        }
+
         // Fullscreen toggle button
         const fullscreenBtn = document.getElementById('btn-toggle-fullscreen');
         const excelWindow = document.getElementById('excel-online-window');
@@ -552,8 +886,23 @@
             });
         }
 
-        // Initial render
-        renderSpreadsheet(currentSheet);
+        // Sheet scroll buttons
+        const btnScrollLeft = document.getElementById('btn-scroll-sheet-left');
+        const btnScrollRight = document.getElementById('btn-scroll-sheet-right');
+        const sheetContainer = document.getElementById('excel-sheet-tabs-container');
+        if (btnScrollLeft && sheetContainer) {
+            btnScrollLeft.addEventListener('click', () => {
+                sheetContainer.scrollBy({ left: -100, behavior: 'smooth' });
+            });
+        }
+        if (btnScrollRight && sheetContainer) {
+            btnScrollRight.addEventListener('click', () => {
+                sheetContainer.scrollBy({ left: 100, behavior: 'smooth' });
+            });
+        }
+
+        // Initial fetch and render
+        fetchSheet(currentSheet);
     }
 
     if (document.readyState === 'loading') {

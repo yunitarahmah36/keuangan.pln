@@ -22,3 +22,18 @@ Route::get(
     [LaporanKeuanganController::class, 'excelOnline']
 )->name('laporan-keuangan.excel-online');
 
+Route::get(
+    '/laporan-keuangan-bulanan/{id}/sheet-data',
+    [LaporanKeuanganController::class, 'sheetData']
+)->name('laporan-keuangan.sheet-data');
+
+Route::post(
+    '/laporan-keuangan-bulanan/{id}/save-cells',
+    [LaporanKeuanganController::class, 'saveCells']
+)->name('laporan-keuangan.save-cells');
+
+Route::post(
+    '/laporan-keuangan-bulanan/{id}/update-mapping',
+    [LaporanKeuanganController::class, 'updateMapping']
+)->name('laporan-keuangan.update-mapping');
+

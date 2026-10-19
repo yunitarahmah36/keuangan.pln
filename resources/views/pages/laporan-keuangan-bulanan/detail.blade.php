@@ -64,8 +64,12 @@
                     </div>
                 </div>
 
+                @php
+                    $firstGroupKey = !empty($kelompokSheet) ? array_key_first($kelompokSheet) : 'Laporan Utama';
+                    $firstSheetInFile = (!empty($kelompokSheet[$firstGroupKey])) ? $kelompokSheet[$firstGroupKey][0] : 'Sheet1';
+                @endphp
                 <!-- Nama File Excel (Dapat Diklik untuk Langsung Melihat Isi File di Excel Online) -->
-                <a href="{{ route('laporan-keuangan.excel-online', ['id' => $laporan->id, 'kelompok' => 'Laporan Utama', 'sheet' => 'NERACA']) }}"
+                <a href="{{ route('laporan-keuangan.excel-online', ['id' => $laporan->id, 'kelompok' => $firstGroupKey, 'sheet' => $firstSheetInFile]) }}"
                    id="btn-click-excel-file"
                    class="flex items-center gap-3 px-3.5 py-2 bg-[#FAF8F4] hover:bg-[#E8F5E9] rounded-xl border border-[rgba(75,46,33,0.12)] hover:border-[#107C41] min-w-0 max-w-[260px] sm:max-w-[300px] transition-all duration-150 cursor-pointer group shadow-2xs hover:shadow-xs active:scale-95"
                    title="Klik untuk langsung membuka dan melihat isi file Excel ini di Excel Online">
@@ -77,8 +81,6 @@
                     <div class="min-w-0 flex-1">
                         <div class="flex items-center justify-between gap-1">
                             <div class="text-[10px] font-bold text-[#8E7467] group-hover:text-[#107C41] uppercase tracking-wider transition-colors">File Excel</div>
-                           
-                            </span>
                         </div>
                         <div class="text-xs sm:text-sm font-extrabold text-[#4B2E21] group-hover:text-[#107C41] truncate transition-colors" title="{{ $laporan->nama_file }}">{{ $laporan->nama_file }}</div>
                     </div>
@@ -89,27 +91,8 @@
 
     <!-- 3. Definisi Kelompok & Metadata -->
     @php
-        $kelompok = $kelompokSheet ?? [
-            'Laporan Utama' => [
-                'NERACA', 'INCOME', 'LabaRugiNew', 'CashFlow',
-            ],
-            'Buku Besar' => [
-                'BukuBesarNew',
-            ],
-            'Persediaan dan Material' => [
-                'Persd-Mat', 'PenyisihanMat', 'HarMat', 'Reals-MP',
-            ],
-            'Penjualan dan Pembelian' => [
-                'JUAL&BL-TL', 'JUAL BELI ATT B', 'Pembelian TL', 'Pembelian TL2',
-            ],
-            'Pendapatan dan Transaksi Intercompany' => [
-                'PendOpLain', 'PO Lain-1', 'Rinc. interco', 'Unrealised Profit Interco',
-            ],
-            'Biaya Operasional dan Beban' => [
-                'IkhtisarBiop', 'BBM Ditanggung PLN', 'BBMJenis', 'HarJabor',
-                'BPeg-U', 'BOLain', 'Non Allw Cost', 'BeLuOp_REV', 'PendLaUOp_REV', 'BePinjaman',
-            ],
-        ];
+        $kelompok = $kelompokSheet ?? [];
+        $totalSheets = array_sum(array_map('count', $kelompok));
 
         $kelompokDescriptions = [
             'Laporan Utama' => 'Posisi keuangan neraca, laporan laba rugi komprehensif, dan arus kas konsolidasi periode berjalan.',
@@ -118,6 +101,8 @@
             'Penjualan dan Pembelian' => 'Rekapitulasi penjualan tenaga listrik reguler/prabayar dan transaksi pembelian tenaga listrik (IPP).',
             'Pendapatan dan Transaksi Intercompany' => 'Pendapatan usaha operasional lain-lain dan eliminasi transaksi antar unit PLN.',
             'Biaya Operasional dan Beban' => 'Rincian biaya bahan bakar pembangkit, pemeliharaan gardu transmisi, dan beban kepegawaian.',
+            'Informasi & Pengaturan' => 'Daftar navigasi menu, parameter periode akuntansi, dan informasi petunjuk laporan.',
+            'Belum Dikategorikan' => 'Daftar worksheet lembar kerja tambahan yang belum terpetakan ke kelompok standar.',
         ];
 
         $kelompokIcons = [
@@ -127,6 +112,8 @@
             'Penjualan dan Pembelian' => '<line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>',
             'Pendapatan dan Transaksi Intercompany' => '<polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/>',
             'Biaya Operasional dan Beban' => '<rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/>',
+            'Informasi & Pengaturan' => '<circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>',
+            'Belum Dikategorikan' => '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><line x1="12" y1="18" x2="12" y2="12"></line><line x1="9" y1="15" x2="15" y2="15"></line>',
         ];
     @endphp
 
@@ -138,7 +125,7 @@
                 Daftar Kelompok Laporan Keuangan
             </h3>
             <p class="text-xs sm:text-sm text-[#8E7467] mt-0.5">
-                Total 6 Kelompok Laporan &bull; 27 Sheet Terdeteksi
+                Total {{ count($kelompok) }} Kelompok Laporan &bull; {{ $totalSheets }} Sheet Terdeteksi
             </p>
         </div>
     </div>
@@ -203,12 +190,14 @@
                     </div>
 
                     <a href="{{ route('laporan-keuangan.excel-online', ['id' => $laporan->id, 'kelompok' => $cleanName, 'sheet' => $firstSheet]) }}"
-                       class="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-[#107C41] hover:bg-[#0E6835] text-white text-xs sm:text-sm font-bold shadow-xs hover:shadow transition-all active:scale-95 group/btn cursor-pointer">
+                       class="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-[#107C41] hover:bg-[#0E6835] text-white text-xs sm:text-sm font-bold shadow-xs hover:shadow transition-all active:scale-95 group/btn cursor-pointer"
+                       title="Buka di Excel Online">
                         <!-- Excel Icon -->
                         <svg class="w-4 h-4 text-white flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
                             <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 14-2.5-3.5L7 17H5l3.5-5L5 7h2l2.5 3.5L12 7h2l-3.5 5 3.5 5h-2z"/>
                         </svg>
                         <span>Buka</span>
+                        <span class="sr-only">di Excel Online</span>
                         <svg class="w-3.5 h-3.5 text-white/90 group-hover/btn:translate-x-1 transition-transform flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                             <line x1="5" y1="12" x2="19" y2="12"></line>
                             <polyline points="12 5 19 12 12 19"></polyline>

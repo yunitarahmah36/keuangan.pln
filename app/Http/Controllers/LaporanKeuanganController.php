@@ -128,12 +128,18 @@ class LaporanKeuanganController extends Controller
                 );
             }
 
+            // Tentukan pengelompokan sheet secara dinamis
+            $excelService = new \App\Services\ExcelWorkbookService();
+            $sheetNames = array_map(fn($s) => $s['nama'], $sheets);
+            $sheetMapping = $excelService->categorizeSheets($sheetNames);
+
             // Simpan laporan dan riwayat dalam satu transaksi.
             $laporan = DB::transaction(function () use (
                 $validated,
                 $namaFile,
                 $path,
-                $jumlahSheet
+                $jumlahSheet,
+                $sheetMapping
             ) {
                 $laporan = LaporanKeuangan::create([
                     'nama_laporan' => 'Laporan Keuangan Bulanan',
@@ -142,6 +148,7 @@ class LaporanKeuanganController extends Controller
                     'nama_file' => $namaFile,
                     'path_file' => $path,
                     'status' => 'Berhasil',
+                    'sheet_mapping' => $sheetMapping,
                 ]);
 
                 ImportHistory::create([
@@ -161,6 +168,7 @@ class LaporanKeuanganController extends Controller
                 'nama_file' => $namaFile,
                 'jumlah_sheet' => $jumlahSheet,
                 'sheets' => $sheets,
+                'categories' => $sheetMapping,
             ];
 
             if ($request->expectsJson() || $request->ajax()) {
@@ -224,55 +232,41 @@ class LaporanKeuanganController extends Controller
         ]);
     }
 
-    private function getKelompokSheet(): array
-{
-    return [
-        'Laporan Utama' => [
-            'NERACA',
-            'INCOME',
-            'LabaRugiNew',
-            'CashFlow',
-        ],
+    /**
+     * Dapatkan pengelompokan sheet workbook secara dinamis.
+     */
+    public function getWorkbookKelompok(LaporanKeuangan $laporan): array
+    {
+        if (!empty($laporan->sheet_mapping) && is_array($laporan->sheet_mapping)) {
+            return $laporan->sheet_mapping;
+        }
 
-        'Buku Besar' => [
-            'BukuBesarNew',
-        ],
+        $fullPath = $laporan->path_file ? storage_path('app/public/' . $laporan->path_file) : null;
+        if ($fullPath && file_exists($fullPath)) {
+            try {
+                $excelService = new \App\Services\ExcelWorkbookService();
+                $sheets = $excelService->getSheetList($fullPath);
+                $sheetNames = array_column($sheets, 'name');
+                $categorized = $excelService->categorizeSheets($sheetNames);
 
-        'Persediaan dan Material' => [
-            'Persd-Mat',
-            'PenyisihanMat',
-            'HarMat',
-            'Reals-MP',
-        ],
+                if (!empty($categorized)) {
+                    $laporan->update(['sheet_mapping' => $categorized]);
+                    return $categorized;
+                }
+            } catch (\Throwable $e) {
+                // Fallback jika terjadi kendala pembacaan file
+            }
+        }
 
-        'Penjualan dan Pembelian' => [
-            'JUAL&BL-TL',
-            'JUAL BELI ATT B',
-            'Pembelian TL',
-            'Pembelian TL2',
-        ],
-
-        'Pendapatan dan Transaksi Intercompany' => [
-            'PendOpLain',
-            'PO Lain-1',
-            'Rinc. interco',
-            'Unrealised Profit Interco',
-        ],
-
-        'Biaya Operasional dan Beban' => [
-            'IkhtisarBiop',
-            'BBM Ditanggung PLN',
-            'BBMJenis',
-            'HarJabor',
-            'BPeg-U',
-            'BOLain',
-            'Non Allw Cost',
-            'BeLuOp_REV',
-            'PendLaUOp_REV',
-            'BePinjaman',
-        ],
-    ];
-}
+        return [
+            'Laporan Utama' => ['NERACA', 'INCOME', 'LabaRugiNew', 'CashFlow'],
+            'Buku Besar' => ['BukuBesarNew'],
+            'Persediaan dan Material' => ['Persd-Mat', 'PenyisihanMat', 'HarMat', 'Reals-MP'],
+            'Penjualan dan Pembelian' => ['JUAL&BL-TL', 'JUAL BELI ATT B', 'Pembelian TL', 'Pembelian TL2'],
+            'Pendapatan dan Transaksi Intercompany' => ['PendOpLain', 'PO Lain-1', 'Rinc. interco', 'Unrealised Profit Interco'],
+            'Biaya Operasional dan Beban' => ['IkhtisarBiop', 'BBM Ditanggung PLN', 'BBMJenis', 'HarJabor', 'BPeg-U', 'BOLain', 'Non Allw Cost', 'BeLuOp_REV', 'PendLaUOp_REV', 'BePinjaman'],
+        ];
+    }
 
     public function detail(int $id): View
     {
@@ -289,9 +283,11 @@ class LaporanKeuanganController extends Controller
             abort(404, 'Data laporan keuangan tidak ditemukan.');
         }
 
+        $kelompokSheet = $this->getWorkbookKelompok($laporan);
+
         return view('pages.laporan-keuangan-bulanan.detail', [
             'laporan' => $laporan,
-            'kelompokSheet' => $this->getKelompokSheet(),
+            'kelompokSheet' => $kelompokSheet,
             'pageTitle' => 'Detail Laporan Keuangan',
             'breadcrumb' => 'Detail Laporan Keuangan',
         ]);
@@ -312,11 +308,13 @@ class LaporanKeuanganController extends Controller
             abort(404, 'Data laporan keuangan tidak ditemukan.');
         }
 
-        $kelompokSheet = $this->getKelompokSheet();
+        $kelompokSheet = $this->getWorkbookKelompok($laporan);
         $requestedKelompok = $request->query('kelompok');
         $requestedSheet = $request->query('sheet');
 
-        $activeKelompok = 'Laporan Utama';
+        $firstKelompok = array_key_first($kelompokSheet) ?? 'Laporan Utama';
+        $activeKelompok = $firstKelompok;
+
         if ($requestedKelompok) {
             if (is_numeric($requestedKelompok)) {
                 $keys = array_keys($kelompokSheet);
@@ -337,7 +335,7 @@ class LaporanKeuanganController extends Controller
         }
 
         $sheetsInActiveKelompok = $kelompokSheet[$activeKelompok] ?? [];
-        $activeSheet = $sheetsInActiveKelompok[0] ?? 'NERACA';
+        $activeSheet = $sheetsInActiveKelompok[0] ?? 'Sheet1';
 
         if ($requestedSheet) {
             if (in_array($requestedSheet, $sheetsInActiveKelompok)) {
@@ -360,6 +358,113 @@ class LaporanKeuanganController extends Controller
             'activeSheet' => $activeSheet,
             'pageTitle' => 'Excel Online - ' . $laporan->nama_file,
             'breadcrumb' => 'Excel Online',
+        ]);
+    }
+
+    /**
+     * API untuk membaca data sheet asli dari file .xlsx.
+     */
+    public function sheetData(Request $request, int $id): JsonResponse
+    {
+        $laporan = LaporanKeuangan::find($id);
+        if (!$laporan) {
+            $history = ImportHistory::find($id);
+            if ($history && $history->laporan_keuangan_id) {
+                $laporan = LaporanKeuangan::find($history->laporan_keuangan_id);
+            }
+        }
+
+        if (!$laporan) {
+            return response()->json(['success' => false, 'message' => 'Laporan tidak ditemukan.'], 404);
+        }
+
+        $fullPath = storage_path('app/public/' . $laporan->path_file);
+        if (!file_exists($fullPath)) {
+            return response()->json(['success' => false, 'message' => 'File Excel fisik tidak ditemukan.'], 404);
+        }
+
+        $kelompok = $this->getWorkbookKelompok($laporan);
+        $firstGroup = array_key_first($kelompok);
+        $defaultSheet = !empty($kelompok[$firstGroup]) ? $kelompok[$firstGroup][0] : 'Sheet1';
+        $sheetName = $request->query('sheet', $defaultSheet);
+
+        $excelService = new \App\Services\ExcelWorkbookService();
+        try {
+            $data = $excelService->readSheetData($fullPath, $sheetName, 250);
+            return response()->json([
+                'success' => true,
+                'data' => $data,
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal membaca sheet: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * API untuk menyimpan perubahan sel dan rumus ke workbook asli.
+     */
+    public function saveCells(Request $request, int $id): JsonResponse
+    {
+        $validated = $request->validate([
+            'sheet' => 'required|string',
+            'cells' => 'required|array',
+            'cells.*.ref' => 'required|string',
+            'cells.*.value' => 'nullable',
+            'cells.*.formula' => 'nullable|string',
+        ]);
+
+        $laporan = LaporanKeuangan::find($id);
+        if (!$laporan) {
+            $history = ImportHistory::find($id);
+            if ($history && $history->laporan_keuangan_id) {
+                $laporan = LaporanKeuangan::find($history->laporan_keuangan_id);
+            }
+        }
+
+        if (!$laporan) {
+            return response()->json(['success' => false, 'message' => 'Laporan tidak ditemukan.'], 404);
+        }
+
+        $fullPath = storage_path('app/public/' . $laporan->path_file);
+        if (!file_exists($fullPath)) {
+            return response()->json(['success' => false, 'message' => 'File Excel fisik tidak ditemukan.'], 404);
+        }
+
+        $excelService = new \App\Services\ExcelWorkbookService();
+        try {
+            $result = $excelService->saveCellsToWorkbook($fullPath, $validated['sheet'], $validated['cells']);
+            return response()->json([
+                'success' => true,
+                'message' => 'Perubahan sel dan rumus berhasil disimpan ke dalam file Excel.',
+                'data' => $result,
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal menyimpan perubahan ke workbook: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * API untuk memperbarui pemetaan kategori sheet (untuk admin).
+     */
+    public function updateMapping(Request $request, int $id): JsonResponse
+    {
+        $validated = $request->validate([
+            'mapping' => 'required|array',
+        ]);
+
+        $laporan = LaporanKeuangan::findOrFail($id);
+        $laporan->update(['sheet_mapping' => $validated['mapping']]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Pemetaan kategori sheet berhasil diperbarui.',
+            'data' => $laporan->sheet_mapping,
         ]);
     }
 }

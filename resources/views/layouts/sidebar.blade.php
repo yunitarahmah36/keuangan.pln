@@ -55,14 +55,24 @@
         <!-- 3. Dynamic Section: Kelompok Laporan (HANYA MUNCUL SETELAH KLIK / MEMBUKA FILE EXCEL) -->
         @php
             $hasActiveFile = isset($laporan);
-            $sidebarKelompokMap = [
-                'Laporan Utama' => ['count' => 4, 'firstSheet' => 'NERACA'],
-                'Buku Besar' => ['count' => 1, 'firstSheet' => 'BukuBesarNew'],
-                'Persediaan dan Material' => ['count' => 4, 'firstSheet' => 'Persd-Mat'],
-                'Penjualan dan Pembelian' => ['count' => 4, 'firstSheet' => 'JUAL&BL-TL'],
-                'Pendapatan dan Transaksi Intercompany' => ['count' => 4, 'firstSheet' => 'PendOpLain'],
-                'Biaya Operasional dan Beban' => ['count' => 10, 'firstSheet' => 'IkhtisarBiop'],
-            ];
+            $sidebarKelompokMap = [];
+            if (!empty($kelompokSheet)) {
+                foreach ($kelompokSheet as $kName => $sheets) {
+                    $sidebarKelompokMap[$kName] = [
+                        'count' => count($sheets),
+                        'firstSheet' => $sheets[0] ?? 'Sheet1',
+                    ];
+                }
+            } else {
+                $sidebarKelompokMap = [
+                    'Laporan Utama' => ['count' => 4, 'firstSheet' => 'NERACA'],
+                    'Buku Besar' => ['count' => 1, 'firstSheet' => 'BukuBesarNew'],
+                    'Persediaan dan Material' => ['count' => 4, 'firstSheet' => 'Persd-Mat'],
+                    'Penjualan dan Pembelian' => ['count' => 4, 'firstSheet' => 'JUAL&BL-TL'],
+                    'Pendapatan dan Transaksi Intercompany' => ['count' => 4, 'firstSheet' => 'PendOpLain'],
+                    'Biaya Operasional dan Beban' => ['count' => 10, 'firstSheet' => 'IkhtisarBiop'],
+                ];
+            }
             $currentK = $activeKelompok ?? null;
             $repId = $hasActiveFile ? $laporan->id : null;
         @endphp
