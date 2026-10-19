@@ -208,6 +208,130 @@
             @php $groupIndex++; @endphp
         @endforeach
     </div>
+
+    <!-- 5. UNIVER SPREADSHEET WORKSPACE (INTEGRASI FITUR EXCEL ONLINE DI HALAMAN DETAIL) -->
+    <div class="mt-10 mb-4 flex flex-wrap items-center justify-between gap-3" id="section-univer-spreadsheet">
+        <div>
+            <h3 class="text-base sm:text-lg font-extrabold text-[#4B2E21] flex items-center gap-2">
+                <span class="w-2.5 h-2.5 rounded-full bg-[#107C41]"></span>
+                Workbook Spreadsheet Online (Univer)
+            </h3>
+            <p class="text-xs sm:text-sm text-[#8E7467] mt-0.5">
+                Seluruh sheet dalam satu workbook &bull; Edit langsung &bull; Perhitungan rumus otomatis &bull; Perubahan tersimpan
+            </p>
+        </div>
+
+        <div class="flex items-center gap-2">
+            <a href="{{ route('laporan-keuangan.excel-online', ['id' => $laporan->id]) }}"
+               class="inline-flex items-center gap-2 px-3.5 py-2 bg-white hover:bg-[#FAF8F4] text-[#4B2E21] border border-[rgba(75,46,33,0.16)] rounded-xl text-xs font-bold shadow-2xs hover:border-[#107C41] transition-all cursor-pointer group"
+               title="Buka tampilan penuh Excel Online">
+                <svg class="w-3.5 h-3.5 text-[#107C41]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                    <polyline points="15 3 21 3 21 9"></polyline>
+                    <line x1="10" y1="14" x2="21" y2="3"></line>
+                </svg>
+                <span>Buka di Excel Online</span>
+            </a>
+        </div>
+    </div>
+
+    <!-- Notification Toast Banner untuk Halaman Detail -->
+    <div id="excel-alert-banner" class="univer-alert-banner hidden mb-3 p-3 rounded-xl border text-xs font-semibold flex items-center justify-between gap-3 shadow-xs transition-all">
+        <div class="flex items-center gap-2 univer-alert-message" id="excel-alert-message"></div>
+        <button type="button" onclick="this.closest('.univer-alert-banner').classList.add('hidden')" class="text-xs font-bold opacity-70 hover:opacity-100">&times;</button>
+    </div>
+
+    <!-- MAIN EXCEL ONLINE WINDOW WORKSPACE IN DETAIL -->
+    <div class="bg-white rounded-2xl border border-[#D4D4D4] shadow-card overflow-hidden transition-all flex flex-col font-sans mb-8">
+        <!-- EXCEL GREEN TOP BAR (#107C41) -->
+        <div class="bg-[#107C41] text-white px-4 py-2.5 flex items-center justify-between gap-4 select-none">
+            <div class="flex items-center gap-3 min-w-0">
+                <div class="w-8 h-8 rounded-lg bg-white/15 border border-white/20 flex items-center justify-center flex-shrink-0 shadow-2xs">
+                    <svg class="w-5 h-5 text-white" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 14-2.5-3.5L7 17H5l3.5-5L5 7h2l2.5 3.5L12 7h2l-3.5 5 3.5 5h-2z"/>
+                    </svg>
+                </div>
+
+                <div class="min-w-0">
+                    <div class="flex items-center gap-2">
+                        <h4 class="text-xs sm:text-sm font-bold text-white tracking-wide truncate">
+                            {{ $laporan->nama_file }}
+                        </h4>
+                        <span class="hidden md:inline-flex items-center gap-1 text-[10px] bg-white/20 px-2 py-0.5 rounded-full font-medium">
+                            <svg class="w-2.5 h-2.5 text-emerald-200" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                                <polyline points="20 6 9 17 4 12"></polyline>
+                            </svg>
+                            Tersimpan di Cloud
+                        </span>
+                    </div>
+                    <div class="text-[11px] text-white/80">
+                        <span>Univer Spreadsheet &bull; {{ $laporan->periode_formatted }} &bull; Seluruh Sheet Terintegrasi</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-2 flex-shrink-0">
+                <!-- Tombol Simpan Perubahan -->
+                <button type="button"
+                        class="btn-save-univer-spreadsheet inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#FFD54F] hover:bg-[#FFCA28] text-[#4B2E21] text-xs font-bold shadow-xs hover:shadow transition-all active:scale-95 cursor-pointer">
+                    <svg class="save-icon-idle w-4 h-4 text-[#4B2E21]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                        <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                        <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                        <polyline points="7 3 7 8 15 8"></polyline>
+                    </svg>
+                    <svg class="save-icon-loading hidden w-4 h-4 text-[#4B2E21] animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                        <circle cx="12" cy="12" r="10" stroke-opacity="0.25"></circle>
+                        <path d="M12 2a10 10 0 0 1 10 10"></path>
+                    </svg>
+                    <span class="save-btn-text">Simpan Perubahan</span>
+                </button>
+
+                <span class="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-black/20 text-[11px] font-semibold text-white/90">
+                    <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    AutoSave Nyala
+                </span>
+            </div>
+        </div>
+
+        <!-- UNIVER SPREADSHEET CANVAS CONTAINER -->
+        <div class="univer-spreadsheet-instance flex-1 w-full bg-white relative overflow-hidden"
+             data-laporan-id="{{ $laporan->id }}"
+             data-active-sheet="{{ $firstSheetInFile ?? 'NERACA' }}"
+             data-csrf="{{ csrf_token() }}">
+            
+            <!-- Loading Indicator Overlay -->
+            <div class="univer-loading-overlay absolute inset-0 bg-white/95 z-20 flex flex-col items-center justify-center gap-3">
+                <div class="w-12 h-12 rounded-2xl bg-[#E8F5E9] border border-[#C8E6C9] flex items-center justify-center text-[#107C41] shadow-xs">
+                    <svg class="w-6 h-6 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                        <circle cx="12" cy="12" r="10" stroke-opacity="0.2"></circle>
+                        <path d="M12 2a10 10 0 0 1 10 10"></path>
+                    </svg>
+                </div>
+                <div class="text-sm font-extrabold text-[#4B2E21]">Memuat Seluruh Sheet ke Univer Spreadsheet...</div>
+                <div class="text-xs text-[#8E7467]">Menyiapkan workbook multi-sheet, formula calculation, dan editor sel</div>
+            </div>
+
+            <!-- Mount Point Canvas Univer (Harus Memiliki Style Height Eksplisit) -->
+            <div id="univer-detail-mount" class="univer-mount-point" style="height: 72vh; min-height: 560px; width: 100%; position: relative;"></div>
+        </div>
+
+        <!-- EXCEL STATUS BAR -->
+        <div class="bg-[#107C41] text-white px-4 py-1.5 flex items-center justify-between text-[11px] font-medium select-none border-t border-[#0E6835]">
+            <div class="flex items-center gap-4">
+                <span class="font-bold tracking-wider">SIAP</span>
+                <span class="text-white/80 hidden sm:inline">&bull; Terhubung ke Seluruh Sheet Workbook Asli</span>
+            </div>
+
+            <div class="flex items-center gap-3">
+                <div class="flex items-center gap-1 bg-black/15 px-2 py-0.5 rounded text-[10px]">
+                    <span class="univer-unsaved-badge">0 Perubahan</span>
+                </div>
+            </div>
+        </div>
     </div>
 </section>
+
+<script>
+    window.rawKelompokData = @json($kelompokSheet);
+</script>
 @endsection

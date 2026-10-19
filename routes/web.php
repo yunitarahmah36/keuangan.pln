@@ -37,3 +37,7 @@ Route::post(
     [LaporanKeuanganController::class, 'updateMapping']
 )->name('laporan-keuangan.update-mapping');
 
+Route::view(
+    '/spreadsheet-test',
+    'pages.laporan-keuangan-bulanan.spreadsheet-test'
+);

@@ -383,12 +383,29 @@ class LaporanKeuanganController extends Controller
             return response()->json(['success' => false, 'message' => 'File Excel fisik tidak ditemukan.'], 404);
         }
 
+        $excelService = new \App\Services\ExcelWorkbookService();
+
+        // Jika request all=1 atau mode=workbook, baca semua sheet sekaligus
+        if ($request->has('all') || $request->query('mode') === 'workbook') {
+            try {
+                $data = $excelService->readAllSheetsData($fullPath, 300);
+                return response()->json([
+                    'success' => true,
+                    'data' => $data,
+                ]);
+            } catch (\Throwable $e) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Gagal membaca seluruh sheet: ' . $e->getMessage(),
+                ], 500);
+            }
+        }
+
         $kelompok = $this->getWorkbookKelompok($laporan);
         $firstGroup = array_key_first($kelompok);
         $defaultSheet = !empty($kelompok[$firstGroup]) ? $kelompok[$firstGroup][0] : 'Sheet1';
         $sheetName = $request->query('sheet', $defaultSheet);
 
-        $excelService = new \App\Services\ExcelWorkbookService();
         try {
             $data = $excelService->readSheetData($fullPath, $sheetName, 250);
             return response()->json([
@@ -408,13 +425,26 @@ class LaporanKeuanganController extends Controller
      */
     public function saveCells(Request $request, int $id): JsonResponse
     {
-        $validated = $request->validate([
-            'sheet' => 'required|string',
-            'cells' => 'required|array',
-            'cells.*.ref' => 'required|string',
-            'cells.*.value' => 'nullable',
-            'cells.*.formula' => 'nullable|string',
-        ]);
+        $hasMultiSheets = $request->has('sheets') && is_array($request->input('sheets'));
+
+        if ($hasMultiSheets) {
+            $validated = $request->validate([
+                'sheets' => 'required|array',
+                'sheets.*.sheet' => 'required|string',
+                'sheets.*.cells' => 'required|array',
+                'sheets.*.cells.*.ref' => 'required|string',
+                'sheets.*.cells.*.value' => 'nullable',
+                'sheets.*.cells.*.formula' => 'nullable|string',
+            ]);
+        } else {
+            $validated = $request->validate([
+                'sheet' => 'required|string',
+                'cells' => 'required|array',
+                'cells.*.ref' => 'required|string',
+                'cells.*.value' => 'nullable',
+                'cells.*.formula' => 'nullable|string',
+            ]);
+        }
 
         $laporan = LaporanKeuangan::find($id);
         if (!$laporan) {
@@ -435,7 +465,12 @@ class LaporanKeuanganController extends Controller
 
         $excelService = new \App\Services\ExcelWorkbookService();
         try {
-            $result = $excelService->saveCellsToWorkbook($fullPath, $validated['sheet'], $validated['cells']);
+            if ($hasMultiSheets) {
+                $result = $excelService->saveMultiSheetCellsToWorkbook($fullPath, $validated['sheets']);
+            } else {
+                $result = $excelService->saveCellsToWorkbook($fullPath, $validated['sheet'], $validated['cells']);
+            }
+
             return response()->json([
                 'success' => true,
                 'message' => 'Perubahan sel dan rumus berhasil disimpan ke dalam file Excel.',

@@ -283,6 +283,127 @@ class LaporanKeuanganTest extends TestCase
         $this->assertArrayHasKey('Belum Dikategorikan', $catATK);
         $this->assertContains('Worksheet', $catATK['Belum Dikategorikan']);
     }
+
+    public function test_sheet_data_api_all_mode_returns_all_sheets_workbook(): void
+    {
+        $testPath = storage_path('app/public/test_multisheet.xlsx');
+        $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+        $sheet1 = $spreadsheet->getActiveSheet();
+        $sheet1->setTitle('SheetSatu');
+        $sheet1->setCellValue('A1', 'Data 1');
+        $sheet2 = $spreadsheet->createSheet();
+        $sheet2->setTitle('SheetDua');
+        $sheet2->setCellValue('A1', 'Data 2');
+        $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
+        $writer->save($testPath);
+
+        $laporan = LaporanKeuangan::create([
+            'nama_laporan' => 'Laporan Multi Sheet',
+            'bulan' => 10,
+            'tahun' => 2026,
+            'nama_file' => 'test_multisheet.xlsx',
+            'path_file' => 'test_multisheet.xlsx',
+            'status' => 'Berhasil',
+        ]);
+
+        $response = $this->getJson("/laporan-keuangan-bulanan/{$laporan->id}/sheet-data?all=1");
+        $response->assertStatus(200);
+        $response->assertJson([
+            'success' => true,
+        ]);
+        $response->assertJsonStructure([
+            'success',
+            'data' => [
+                'fileName',
+                'sheets',
+                'totalSheets',
+            ]
+        ]);
+
+        $sheets = $response->json('data.sheets');
+        $sheetNames = array_column($sheets, 'sheet');
+        $this->assertContains('SheetSatu', $sheetNames);
+        $this->assertContains('SheetDua', $sheetNames);
+
+        if (file_exists($testPath)) unlink($testPath);
+    }
+
+    public function test_save_cells_api_multi_sheet_payload(): void
+    {
+        $testPath = storage_path('app/public/test_save_multi.xlsx');
+        $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+        $sheet1 = $spreadsheet->getActiveSheet();
+        $sheet1->setTitle('SheetAlpha');
+        $sheet1->setCellValue('A1', 10);
+        $sheet2 = $spreadsheet->createSheet();
+        $sheet2->setTitle('SheetBeta');
+        $sheet2->setCellValue('B2', 20);
+        $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
+        $writer->save($testPath);
+
+        $laporan = LaporanKeuangan::create([
+            'nama_laporan' => 'Laporan Multi Save',
+            'bulan' => 10,
+            'tahun' => 2026,
+            'nama_file' => 'test_save_multi.xlsx',
+            'path_file' => 'test_save_multi.xlsx',
+            'status' => 'Berhasil',
+        ]);
+
+        $payload = [
+            'sheets' => [
+                [
+                    'sheet' => 'SheetAlpha',
+                    'cells' => [
+                        ['ref' => 'A2', 'value' => 50, 'formula' => null]
+                    ]
+                ],
+                [
+                    'sheet' => 'SheetBeta',
+                    'cells' => [
+                        ['ref' => 'B3', 'value' => 100, 'formula' => '=B2*5']
+                    ]
+                ]
+            ]
+        ];
+
+        $response = $this->postJson("/laporan-keuangan-bulanan/{$laporan->id}/save-cells", $payload);
+        $response->assertStatus(200);
+        $response->assertJson(['success' => true]);
+
+        // Verify with readAll
+        $service = new \App\Services\ExcelWorkbookService();
+        $allData = $service->readAllSheetsData($testPath);
+        
+        $sheetAlpha = null;
+        $sheetBeta = null;
+        foreach ($allData['sheets'] as $s) {
+            if ($s['sheet'] === 'SheetAlpha') $sheetAlpha = $s;
+            if ($s['sheet'] === 'SheetBeta') $sheetBeta = $s;
+        }
+
+        $this->assertNotNull($sheetAlpha);
+        $this->assertNotNull($sheetBeta);
+
+        $cellA2 = null;
+        foreach ($sheetAlpha['rows'] as $r) {
+            if (isset($r['cells']['A2'])) $cellA2 = $r['cells']['A2'];
+        }
+
+        $cellB3 = null;
+        foreach ($sheetBeta['rows'] as $r) {
+            if (isset($r['cells']['B3'])) $cellB3 = $r['cells']['B3'];
+        }
+
+        $this->assertNotNull($cellA2);
+        $this->assertEquals('50', $cellA2['val']);
+
+        $this->assertNotNull($cellB3);
+        $this->assertEquals('100', $cellB3['val']);
+        $this->assertEquals('=B2*5', $cellB3['formula']);
+
+        if (file_exists($testPath)) unlink($testPath);
+    }
 }
 
 

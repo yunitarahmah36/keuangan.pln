@@ -413,6 +413,283 @@ class ExcelWorkbookService
         }
     }
 
+    /**
+     * Membaca seluruh sheet di dalam workbook .xlsx dalam 1 sesi pembacaan cepat.
+     */
+    public function readAllSheetsData(string $filePath, int $maxRows = 300): array
+    {
+        if (!file_exists($filePath)) {
+            throw new RuntimeException("File tidak ditemukan: {$filePath}");
+        }
+
+        $zip = new ZipArchive();
+        if ($zip->open($filePath) !== true) {
+            throw new RuntimeException("File Excel tidak dapat dibuka.");
+        }
+
+        try {
+            $sheetList = $this->getSheetList($filePath);
+
+            // 1. Baca shared strings sekali saja untuk seluruh sheet
+            $sharedStrings = [];
+            $ssXml = $zip->getFromName('xl/sharedStrings.xml');
+            if ($ssXml !== false) {
+                $xmlReader = new XMLReader();
+                $xmlReader->XML($ssXml);
+                while ($xmlReader->read()) {
+                    if ($xmlReader->nodeType == XMLReader::ELEMENT && $xmlReader->localName === 'si') {
+                        $node = new SimpleXMLElement($xmlReader->readOuterXml());
+                        $text = '';
+                        if (isset($node->t)) {
+                            $text = (string)$node->t;
+                        } else {
+                            foreach ($node->r as $r) {
+                                $text .= (string)$r->t;
+                            }
+                        }
+                        $sharedStrings[] = $text;
+                    }
+                }
+                $xmlReader->close();
+            }
+
+            $allSheets = [];
+
+            // 2. Baca data dari setiap sheet
+            foreach ($sheetList as $sheetInfo) {
+                $sName = $sheetInfo['name'];
+                $targetPath = $sheetInfo['target'];
+
+                if (!$targetPath || $zip->locateName($targetPath) === false) {
+                    continue;
+                }
+
+                $sheetXml = $zip->getFromName($targetPath);
+                $xmlReader = new XMLReader();
+                $xmlReader->XML($sheetXml);
+
+                $rows = [];
+                $maxColIndex = 8;
+                $rowCount = 0;
+
+                while ($xmlReader->read()) {
+                    if ($xmlReader->nodeType == XMLReader::ELEMENT && $xmlReader->localName === 'row') {
+                        $rNum = (int)$xmlReader->getAttribute('r');
+                        $rowXml = new SimpleXMLElement($xmlReader->readOuterXml());
+                        $cells = [];
+
+                        foreach ($rowXml->c as $c) {
+                            $ref = (string)$c['r'];
+                            $type = (string)$c['t'];
+                            $formula = isset($c->f) ? (string)$c->f : null;
+                            $rawVal = isset($c->v) ? (string)$c->v : '';
+
+                            if ($type === 's' && isset($sharedStrings[(int)$rawVal])) {
+                                $displayVal = $sharedStrings[(int)$rawVal];
+                            } elseif ($type === 'b') {
+                                $displayVal = $rawVal === '1' ? 'TRUE' : 'FALSE';
+                            } else {
+                                $displayVal = $rawVal;
+                            }
+
+                            preg_match('/^([A-Z]+)/', $ref, $matches);
+                            $colLetter = $matches[1] ?? 'A';
+                            $colIdx = $this->columnLetterToIndex($colLetter);
+                            if ($colIdx > $maxColIndex) {
+                                $maxColIndex = min($colIdx, 36);
+                            }
+
+                            $cells[$ref] = [
+                                'ref' => $ref,
+                                'col' => $colLetter,
+                                'row' => $rNum,
+                                'val' => $displayVal,
+                                'formula' => $formula ? '=' . $formula : null,
+                                'type' => $type,
+                            ];
+                        }
+
+                        $rows[$rNum] = [
+                            'row' => $rNum,
+                            'cells' => $cells,
+                        ];
+
+                        $rowCount++;
+                        if ($rowCount >= $maxRows) {
+                            break;
+                        }
+                    }
+                }
+                $xmlReader->close();
+
+                $columns = [];
+                for ($i = 1; $i <= $maxColIndex; $i++) {
+                    $columns[] = $this->indexToColumnLetter($i);
+                }
+
+                $allSheets[] = [
+                    'sheet' => $sName,
+                    'columns' => $columns,
+                    'rows' => array_values($rows),
+                    'totalRows' => count($rows),
+                    'maxColIndex' => $maxColIndex,
+                ];
+            }
+
+            return [
+                'fileName' => basename($filePath),
+                'sheets' => $allSheets,
+                'totalSheets' => count($allSheets),
+            ];
+        } finally {
+            $zip->close();
+        }
+    }
+
+    /**
+     * Simpan sel dan rumus baru ke dalam multiple sheet workbook sekaligus.
+     */
+    public function saveMultiSheetCellsToWorkbook(string $filePath, array $sheetsToUpdate): array
+    {
+        if (!file_exists($filePath)) {
+            throw new RuntimeException("File tidak ditemukan: {$filePath}");
+        }
+
+        $zip = new ZipArchive();
+        if ($zip->open($filePath) !== true) {
+            throw new RuntimeException("Gagal membuka file Excel untuk menyimpan.");
+        }
+
+        try {
+            $sheetsList = $this->getSheetList($filePath);
+            $targetMap = [];
+            foreach ($sheetsList as $s) {
+                $targetMap[strtolower($s['name'])] = $s['target'];
+            }
+
+            $totalUpdatedCount = 0;
+            $results = [];
+
+            foreach ($sheetsToUpdate as $sheetUpdate) {
+                $sName = $sheetUpdate['sheet'] ?? '';
+                $cellsToUpdate = $sheetUpdate['cells'] ?? [];
+
+                if (!$sName || empty($cellsToUpdate)) {
+                    continue;
+                }
+
+                $lowerName = strtolower($sName);
+                $targetPath = $targetMap[$lowerName] ?? null;
+
+                if (!$targetPath || $zip->locateName($targetPath) === false) {
+                    continue;
+                }
+
+                $sheetXml = $zip->getFromName($targetPath);
+                $dom = new DOMDocument();
+                $dom->loadXML($sheetXml, LIBXML_NONET);
+                $xp = new DOMXPath($dom);
+
+                $sheetDataNodes = $xp->query('//*[local-name()="sheetData"]');
+                if ($sheetDataNodes->length === 0) {
+                    continue;
+                }
+                $sheetData = $sheetDataNodes->item(0);
+
+                $updatedCells = [];
+
+                foreach ($cellsToUpdate as $item) {
+                    $ref = strtoupper(trim($item['ref'] ?? ''));
+                    if (!$ref || !preg_match('/^([A-Z]+)(\d+)$/', $ref, $matches)) {
+                        continue;
+                    }
+
+                    $rowNum = (int)$matches[2];
+                    $value = $item['value'] ?? '';
+                    $formula = $item['formula'] ?? null;
+
+                    if ($formula && str_starts_with($formula, '=')) {
+                        $formula = ltrim($formula, '=');
+                    }
+
+                    if (is_string($value) && str_starts_with($value, '=')) {
+                        $formula = ltrim($value, '=');
+                        $value = $item['calculatedValue'] ?? '0';
+                    }
+
+                    $rowNodes = $xp->query('./*[local-name()="row"][@r="' . $rowNum . '"]', $sheetData);
+                    if ($rowNodes->length > 0) {
+                        $rowNode = $rowNodes->item(0);
+                    } else {
+                        $rowNode = $dom->createElement('row');
+                        $rowNode->setAttribute('r', (string)$rowNum);
+                        $sheetData->appendChild($rowNode);
+                    }
+
+                    $cellNodes = $xp->query('./*[local-name()="c"][@r="' . $ref . '"]', $rowNode);
+                    if ($cellNodes->length > 0) {
+                        $cNode = $cellNodes->item(0);
+                    } else {
+                        $cNode = $dom->createElement('c');
+                        $cNode->setAttribute('r', $ref);
+                        $rowNode->appendChild($cNode);
+                    }
+
+                    if ($cNode->hasAttribute('t') && ($formula || is_numeric($value))) {
+                        $cNode->removeAttribute('t');
+                    }
+
+                    $fNodes = $xp->query('./*[local-name()="f"]', $cNode);
+                    if ($formula) {
+                        if ($fNodes->length > 0) {
+                            $fNodes->item(0)->nodeValue = $formula;
+                        } else {
+                            $fElem = $dom->createElement('f', htmlspecialchars($formula));
+                            $cNode->insertBefore($fElem, $cNode->firstChild);
+                        }
+                    } else {
+                        foreach ($fNodes as $fNode) {
+                            $cNode->removeChild($fNode);
+                        }
+                    }
+
+                    $vNodes = $xp->query('./*[local-name()="v"]', $cNode);
+                    if ($vNodes->length > 0) {
+                        $vNodes->item(0)->nodeValue = (string)$value;
+                    } else {
+                        $vElem = $dom->createElement('v', (string)$value);
+                        $cNode->appendChild($vElem);
+                    }
+
+                    $updatedCells[] = [
+                        'ref' => $ref,
+                        'value' => $value,
+                        'formula' => $formula ? '=' . $formula : null,
+                    ];
+                }
+
+                $zip->addFromString($targetPath, $dom->saveXML());
+                $totalUpdatedCount += count($updatedCells);
+                $results[] = [
+                    'sheet' => $sName,
+                    'updatedCount' => count($updatedCells),
+                    'updatedCells' => $updatedCells,
+                ];
+            }
+
+            $zip->close();
+
+            return [
+                'success' => true,
+                'totalUpdated' => $totalUpdatedCount,
+                'sheets' => $results,
+            ];
+        } catch (\Throwable $e) {
+            $zip->close();
+            throw $e;
+        }
+    }
+
     private function columnLetterToIndex(string $letter): int
     {
         $letter = strtoupper($letter);
