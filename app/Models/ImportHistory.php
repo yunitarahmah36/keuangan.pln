@@ -41,7 +41,7 @@ class ImportHistory extends Model
             9 => 'Sep', 10 => 'Okt', 11 => 'Nov', 12 => 'Des'
         ];
 
-        $dt = $this->waktu_import;
+        $dt = $this->waktu_import->copy()->timezone(config('app.timezone', 'Asia/Makassar'));
         $tgl = $dt->format('d');
         $bln = $bulanIndo[(int)$dt->format('n')] ?? $dt->format('M');
         $thn = $dt->format('Y');

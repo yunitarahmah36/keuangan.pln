@@ -16,9 +16,9 @@
             <div class="breadcrumb-trail">
                 <span>Sistem Keuangan</span>
                 <span class="separator">/</span>
-                <span id="topbar-breadcrumb-item">Dashboard</span>
+                <span id="topbar-breadcrumb-item">{{ $breadcrumb ?? 'Dashboard' }}</span>
             </div>
-            <h2 id="topbar-page-title" class="current-view-title">Dashboard</h2>
+            <h2 id="topbar-page-title" class="current-view-title">{{ $pageTitle ?? 'Dashboard' }}</h2>
         </div>
     </div>
 

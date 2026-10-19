@@ -298,9 +298,10 @@
                                     @endif
                                 </td>
                                 <td class="py-3.5 px-4 sm:px-5 text-center">
-                                    <button type="button" class="btn-action-lihat" onclick="alert('Rincian File Import (DB ID: {{ $history->id }}):\nNama: {{ addslashes($history->nama_file) }}\nPeriode: {{ $history->periode_text }}\nTanggal Import: {{ $history->formatted_waktu_import }}\nStatus: {{ $history->status }}')">
+                                    <a href="{{ route('laporan-keuangan.detail', $history->laporan_keuangan_id ?? $history->id) }}"
+                                       class="btn-action-lihat inline-flex items-center justify-center">
                                         Lihat
-                                    </button>
+                                    </a>
                                 </td>
                             </tr>
                         @empty

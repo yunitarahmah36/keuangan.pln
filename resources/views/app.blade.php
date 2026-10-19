@@ -32,11 +32,15 @@
 
             <!-- Viewport Konten SPA -->
             <main class="spa-content-viewport">
-                <!-- Fitur 1: Dashboard -->
-                @include('pages.dashboard.index')
+                @hasSection('content')
+                    @yield('content')
+                @else
+                    <!-- Fitur 1: Dashboard -->
+                    @include('pages.dashboard.index')
 
-                <!-- Fitur 2: Laporan Keuangan Bulanan -->
-                @include('pages.laporan-keuangan-bulanan.index')
+                    <!-- Fitur 2: Laporan Keuangan Bulanan -->
+                    @include('pages.laporan-keuangan-bulanan.index')
+                @endif
             </main>
         </div>
     </div>

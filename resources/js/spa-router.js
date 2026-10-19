@@ -166,6 +166,30 @@ class SpaRouter {
     resolveRoute(path) {
         // Normalize path
         let cleanPath = path.toLowerCase().replace(/\/+$/, '') || '/';
+
+        // Check if detail route (e.g. /laporan-keuangan-bulanan/19/detail)
+        if (/\/laporan-keuangan-bulanan\/\d+\/detail/i.test(cleanPath)) {
+            return {
+                viewId: 'view-detail-laporan-keuangan',
+                title: 'Detail Laporan Keuangan',
+                breadcrumb: 'Detail Laporan Keuangan',
+                canonicalPath: cleanPath,
+                isDetail: true
+            };
+        }
+
+        // Check if excel online route (e.g. /laporan-keuangan-bulanan/19/excel-online)
+        if (/\/laporan-keuangan-bulanan\/\d+\/excel-online/i.test(cleanPath)) {
+            return {
+                viewId: 'view-excel-online',
+                title: 'Excel Online - Laporan Keuangan',
+                breadcrumb: 'Excel Online',
+                canonicalPath: cleanPath,
+                isExcelOnline: true
+            };
+        }
+
+
         return this.routes[cleanPath] || this.routes['/dashboard'];
     }
 
@@ -176,6 +200,14 @@ class SpaRouter {
         // If clicking current route, avoid reloading
         if (!isInitial && this.currentPath === targetPath) {
             this.closeMobileSidebar();
+            return;
+        }
+
+        // Check if the target view exists in the current DOM
+        const targetViewEl = document.getElementById(route.viewId);
+        if (!targetViewEl && !isInitial) {
+            // View does not exist in the current page structure, navigate directly
+            window.location.href = targetPath;
             return;
         }
 
@@ -199,6 +231,7 @@ class SpaRouter {
 
         // Switch active view pane
         this.renderView(route);
+        document.dispatchEvent(new Event('spa:view-changed'));
 
         // Update navigation active state
         this.updateActiveNav(targetPath);
@@ -343,122 +376,6 @@ class SpaRouter {
                 handleFile(file);
             }
         });
-
-        // Handle AJAX form submission for importing
-        const importForm = document.getElementById('form-import-laporan');
-        const submitBtn = document.getElementById('btn-submit-import');
-        const submitText = document.getElementById('btn-submit-import-text');
-        const tableBody = document.getElementById('import-history-tbody');
-        const countBadge = document.getElementById('import-history-count-badge');
-
-        const updateRowNumbers = () => {
-            if (!tableBody) return;
-            const rows = tableBody.querySelectorAll('tr[data-history-id]');
-            rows.forEach((row, idx) => {
-                const numCell = row.querySelector('.history-row-number');
-                if (numCell) numCell.textContent = idx + 1;
-            });
-            if (countBadge) {
-                countBadge.textContent = `${rows.length} Data dari Database`;
-            }
-        };
-
-        if (importForm && !importForm.dataset.initialized) {
-            importForm.dataset.initialized = 'true';
-
-            importForm.addEventListener('submit', async (e) => {
-                e.preventDefault();
-
-                if (!fileInput.files || !fileInput.files[0]) {
-                    showNotification('Silakan pilih file Excel terlebih dahulu.', false);
-                    return;
-                }
-
-                const formData = new FormData(importForm);
-
-                // Set loading state
-                if (submitBtn) {
-                    submitBtn.disabled = true;
-                    if (submitText) submitText.textContent = 'Mengimport...';
-                }
-                AppLoading.start();
-
-                try {
-                    const response = await fetch(importForm.action, {
-                        method: 'POST',
-                        body: formData,
-                        headers: {
-                            'X-Requested-With': 'XMLHttpRequest',
-                            'Accept': 'application/json',
-                        },
-                    });
-
-                    const data = await response.json();
-
-                    if (response.ok && data.success) {
-                        showNotification(data.message || 'File Excel berhasil diimport dan disimpan ke database!', true);
-
-                        // Remove empty state row if present
-                        const emptyRow = document.getElementById('empty-history-row');
-                        if (emptyRow) {
-                            emptyRow.remove();
-                        }
-
-                        // Create new row
-                        const historyItem = data.data;
-                        const newRow = document.createElement('tr');
-                        newRow.className = 'hover:bg-[#FCFAF3] transition-all bg-[#FCFAF2]';
-                        newRow.setAttribute('data-history-id', historyItem.id);
-                        newRow.innerHTML = `
-                            <td class="py-3.5 px-5 text-center font-semibold text-[#8E7467] history-row-number">1</td>
-                            <td class="py-3.5 px-5 font-semibold text-[#4B2E21]">${historyItem.periode}</td>
-                            <td class="py-3.5 px-5 font-medium text-[#6B4D3F]">
-                                <div class="flex items-center gap-2">
-                                    <svg class="w-4 h-4 text-[#4B2E21] flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                                        <polyline points="14 2 14 8 20 8"></polyline>
-                                    </svg>
-                                    <span class="truncate max-w-[260px]" title="${historyItem.nama_file}">
-                                        ${historyItem.nama_file}
-                                    </span>
-                                </div>
-                            </td>
-                            <td class="py-3.5 px-5 text-[#8E7467]">${historyItem.waktu_import}</td>
-                            <td class="py-3.5 px-5 text-center">
-                                <span class="badge-status-berhasil">${historyItem.status}</span>
-                            </td>
-                            <td class="py-3.5 px-5 text-center">
-                                <button type="button" class="btn-action-lihat" onclick="alert('Rincian File Import (DB ID: ${historyItem.id}):\\nNama: ${historyItem.nama_file}\\nPeriode: ${historyItem.periode}\\nTanggal Import: ${historyItem.waktu_import}\\nStatus: ${historyItem.status}')">
-                                    Lihat
-                                </button>
-                            </td>
-                        `;
-
-                        if (tableBody) {
-                            tableBody.prepend(newRow);
-                            updateRowNumbers();
-                            setTimeout(() => {
-                                newRow.classList.remove('bg-[#FCFAF2]');
-                            }, 2500);
-                        }
-
-                        // Reset dropzone
-                        resetFile();
-                    } else {
-                        const errMsg = data.message || (data.errors ? Object.values(data.errors).flat().join(', ') : 'Gagal mengimport file.');
-                        showNotification(errMsg, false);
-                    }
-                } catch (err) {
-                    showNotification('Terjadi kesalahan saat mengunggah file. Silakan coba lagi.', false);
-                } finally {
-                    if (submitBtn) {
-                        submitBtn.disabled = false;
-                        if (submitText) submitText.textContent = 'Import File Sekarang';
-                    }
-                    AppLoading.finish();
-                }
-            });
-        }
     }
 
     renderView(route) {
@@ -478,13 +395,28 @@ class SpaRouter {
         navLinks.forEach((link) => {
             const linkHref = link.getAttribute('href');
             const linkRoute = this.resolveRoute(linkHref);
-            if (linkRoute && linkRoute.canonicalPath === canonicalPath) {
+            const isMatch = (linkRoute && linkRoute.canonicalPath === canonicalPath) ||
+                (canonicalPath === '/laporan-keuangan-bulanan' && linkHref === '/laporan-keuangan-bulanan');
+
+            if (isMatch) {
                 link.classList.add('active');
             } else {
                 link.classList.remove('active');
             }
         });
+
+        // Hide or show sidebar kelompok wrapper based on whether an Excel file is being viewed
+        const sidebarKelompok = document.getElementById('sidebar-kelompok-wrapper');
+        if (sidebarKelompok) {
+            const isViewingExcelFile = canonicalPath.includes('/detail') || canonicalPath.includes('/excel-online');
+            if (isViewingExcelFile) {
+                sidebarKelompok.classList.remove('hidden');
+            } else {
+                sidebarKelompok.classList.add('hidden');
+            }
+        }
     }
+
 
     updateHeaderAndTitle(route) {
         // Document Title

@@ -43,7 +43,19 @@ class LaporanKeuanganTest extends TestCase
 
     public function test_can_import_excel_file_and_save_to_database(): void
     {
-        $fakeFile = UploadedFile::fake()->create('Laporan_Test_Okt2026.xlsx', 100);
+        $tempFile = tempnam(sys_get_temp_dir(), 'xlsx');
+        $zip = new \ZipArchive();
+        $zip->open($tempFile, \ZipArchive::CREATE | \ZipArchive::OVERWRITE);
+        $zip->addFromString('xl/workbook.xml', '<?xml version="1.0" encoding="UTF-8"?><workbook><sheets><sheet name="NERACA"/></sheets></workbook>');
+        $zip->close();
+
+        $fakeFile = new UploadedFile(
+            $tempFile,
+            'Laporan_Test_Okt2026.xlsx',
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            null,
+            true
+        );
 
         $response = $this->postJson('/laporan-keuangan-bulanan/import', [
             'file' => $fakeFile,
@@ -66,6 +78,10 @@ class LaporanKeuanganTest extends TestCase
             'nama_file' => 'Laporan_Test_Okt2026.xlsx',
             'status' => 'Berhasil',
         ]);
+
+        if (file_exists($tempFile)) {
+            @unlink($tempFile);
+        }
     }
 
     public function test_rejects_non_xlsx_file(): void
@@ -81,4 +97,60 @@ class LaporanKeuanganTest extends TestCase
         $response->assertStatus(422);
         $response->assertJsonValidationErrors(['file']);
     }
+
+    public function test_detail_laporan_keuangan_page_renders_with_layout_and_sheet_groups(): void
+    {
+        $laporan = LaporanKeuangan::create([
+            'nama_laporan' => 'Laporan Keuangan Bulanan',
+            'bulan' => 9,
+            'tahun' => 2026,
+            'nama_file' => 'Laporan_Keuangan_Sept2026.xlsx',
+            'status' => 'Berhasil',
+        ]);
+
+        $response = $this->get("/laporan-keuangan-bulanan/{$laporan->id}/detail");
+
+        $response->assertStatus(200);
+        $response->assertSee('KEUANGAN PLN');
+        $response->assertSee('Detail Laporan Keuangan');
+        $response->assertSee('Laporan_Keuangan_Sept2026.xlsx');
+        $response->assertSee('September 2026');
+        $response->assertSee('Kembali ke Laporan Keuangan');
+        $response->assertSee('NERACA');
+        $response->assertSee('INCOME');
+        $response->assertSee('BukuBesarNew');
+        $response->assertSee('CashFlow');
+        $response->assertSee('Buka di Excel Online');
+        $response->assertSee('Daftar Kelompok Laporan Keuangan');
+        $response->assertSee('btn-click-excel-file');
+        // Assert sidebar shows kelompok after clicking/opening Excel file
+        $response->assertSee('sidebar-kelompok-wrapper');
+        $response->assertSee('Laporan Utama');
+        $response->assertSee('Biaya Operasional dan Beban');
+    }
+
+
+    public function test_excel_online_page_renders_with_spreadsheet_interface(): void
+    {
+        $laporan = LaporanKeuangan::create([
+            'nama_laporan' => 'Laporan Keuangan Bulanan',
+            'bulan' => 9,
+            'tahun' => 2026,
+            'nama_file' => 'Laporan_Keuangan_Sept2026.xlsx',
+            'status' => 'Berhasil',
+        ]);
+
+        $response = $this->get("/laporan-keuangan-bulanan/{$laporan->id}/excel-online?kelompok=Laporan+Utama&sheet=NERACA");
+
+        $response->assertStatus(200);
+        $response->assertSee('Excel Online');
+        $response->assertSee('NERACA');
+        $response->assertSee('Kembali ke Kelompok Laporan');
+        $response->assertSee('Laporan_Keuangan_Sept2026.xlsx');
+        // Assert sidebar shows kelompok in excel online as well
+        $response->assertSee('sidebar-kelompok-wrapper');
+        $response->assertSee('sidebar-kelompok-nav-item');
+    }
 }
+
+
