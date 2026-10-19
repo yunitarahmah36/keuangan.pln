@@ -388,7 +388,7 @@ class LaporanKeuanganController extends Controller
         // Jika request all=1 atau mode=workbook, baca semua sheet sekaligus
         if ($request->has('all') || $request->query('mode') === 'workbook') {
             try {
-                $data = $excelService->readAllSheetsData($fullPath, 300);
+                $data = $excelService->readAllSheetsData($fullPath, 2500);
                 return response()->json([
                     'success' => true,
                     'data' => $data,

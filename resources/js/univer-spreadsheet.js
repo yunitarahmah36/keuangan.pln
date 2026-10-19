@@ -27,6 +27,25 @@ function indexToColLetter(index) {
     return letter;
 }
 
+function excelRefToRange(ref) {
+    if (!ref || typeof ref !== 'string') return null;
+    const parts = ref.split(':');
+    if (parts.length !== 2) return null;
+    const startMatch = parts[0].trim().toUpperCase().match(/^([A-Z]+)(\d+)$/);
+    const endMatch = parts[1].trim().toUpperCase().match(/^([A-Z]+)(\d+)$/);
+    if (!startMatch || !endMatch) return null;
+    const startRow = parseInt(startMatch[2], 10) - 1;
+    const startCol = colLetterToIndex(startMatch[1]) - 1;
+    const endRow = parseInt(endMatch[2], 10) - 1;
+    const endCol = colLetterToIndex(endMatch[1]) - 1;
+    return {
+        startRow: Math.min(startRow, endRow),
+        endRow: Math.max(startRow, endRow),
+        startColumn: Math.min(startCol, endCol),
+        endColumn: Math.max(startCol, endCol),
+    };
+}
+
 export function initUniverSpreadsheet() {
     const containers = document.querySelectorAll('.univer-spreadsheet-instance:not([data-univer-initialized="true"])');
 
@@ -78,6 +97,49 @@ export function initUniverSpreadsheet() {
                 const sheetId = `sheet_${sIndex}_${cleanName.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
                 sheetOrder.push(sheetId);
 
+                // 1. Ekstrak lebar kolom kustom dari file Excel
+                const columnData = {};
+                if (sData.cols && typeof sData.cols === 'object') {
+                    Object.keys(sData.cols).forEach((colNumStr) => {
+                        const colNum = parseInt(colNumStr, 10);
+                        const colIdx = colNum - 1; // 0-indexed
+                        const wVal = parseFloat(sData.cols[colNumStr]);
+                        let px;
+                        if (wVal < 2) {
+                            px = 16; // Kolom spasi/indentasi sempit khas laporan keuangan PLN
+                        } else {
+                            px = Math.round(wVal * 8.5) + 6;
+                        }
+                        columnData[colIdx] = { w: Math.max(16, px) };
+                    });
+                }
+
+                // 2. Ekstrak tinggi baris kustom
+                const rowData = {};
+                if (sData.rowHeights && typeof sData.rowHeights === 'object') {
+                    Object.keys(sData.rowHeights).forEach((rNumStr) => {
+                        const rNum = parseInt(rNumStr, 10);
+                        const rIdx = rNum - 1;
+                        const ht = parseFloat(sData.rowHeights[rNumStr]);
+                        if (ht > 0) {
+                            rowData[rIdx] = { h: Math.round(ht * 1.33) };
+                        }
+                    });
+                }
+
+                // 3. Ekstrak sel gabungan (merged cells)
+                const mergeData = [];
+                if (Array.isArray(sData.merges)) {
+                    sData.merges.forEach((m) => {
+                        const ref = typeof m === 'string' ? m : (m && m.ref ? m.ref : '');
+                        const range = excelRefToRange(ref);
+                        if (range) {
+                            mergeData.push(range);
+                        }
+                    });
+                }
+
+                // 4. Bangun data sel beserta format visual, warna, dan peletakannya
                 const cellData = {};
                 (sData.rows || []).forEach((r) => {
                     const rIdx = (r.row || 1) - 1; // 0-indexed row
@@ -101,6 +163,57 @@ export function initUniverSpreadsheet() {
                                 cellObj.f = formula.startsWith('=') ? formula.trim() : '=' + formula.trim();
                             }
 
+                            // Gabungkan style asli Excel dan penataan tabel rapi
+                            let style = c.style ? { ...c.style } : {};
+                            const strVal = String(rawVal).trim();
+
+                            // A. Peletakan (Alignment):
+                            if (isNumeric && style.ht === undefined) {
+                                style.ht = 3; // Rata kanan untuk angka finansial
+                                if (style.vt === undefined) style.vt = 2; // Rata tengah vertikal
+                            } else if (style.ht === undefined && strVal.length > 0) {
+                                if (/^\d+$/.test(strVal) && strVal.length <= 4) {
+                                    style.ht = 2; // Nomor urut / kode pendek rata tengah
+                                } else {
+                                    style.ht = 1; // Rata kiri untuk deskripsi/akun
+                                }
+                                if (style.vt === undefined) style.vt = 2;
+                            }
+
+                            // B. Penataan tabel, header, dan warna PLN:
+                            const isHeaderWord = /^(no|kode\s*akun|kode|uraian|uraian\s*pos|nama\s*rekening|saldo|debet|kredit|mutasi|catatan|notes|rekening|keterangan|jumlah|rekapitulasi|persentase|status)$/i.test(strVal);
+
+                            // Header tabel kolom (misal: No, Uraian, Saldo Awal, Debet, Kredit, dll.)
+                            if (isHeaderWord || (rIdx <= 4 && strVal.length > 0 && !isNumeric && !style.bg)) {
+                                if (style.bl === undefined) style.bl = 1;
+                                if (style.ht === undefined || style.ht === 1) style.ht = 2;
+                                if (!style.bg && isHeaderWord) {
+                                    style.bg = { rgb: '#f1f5f9' }; // Latar abu-abu elegan untuk header
+                                }
+                            }
+
+                            // Baris Rekapitulasi / Total / Saldo Akhir
+                            if (/\b(total|jumlah|rekapitulasi|saldo akhir)\b/i.test(strVal)) {
+                                style.bl = 1;
+                                if (!style.bg) {
+                                    style.bg = { rgb: '#f0fdf4' }; // Hijau lembut khas PLN
+                                }
+                                if (!style.cl) {
+                                    style.cl = { rgb: '#166534' }; // Teks hijau pekat
+                                }
+                            }
+
+                            // Judul Utama Laporan Keuangan
+                            if (/(laporan\s*keuangan|pt\s*pln|konsolidasi|neraca|buku\s*besar)/i.test(strVal) && rIdx <= 2) {
+                                style.bl = 1;
+                                if (!style.fs) style.fs = 11;
+                                if (!style.cl) style.cl = { rgb: '#0f766e' }; // Aksen hijau tua PLN
+                            }
+
+                            if (Object.keys(style).length > 0) {
+                                cellObj.s = style;
+                            }
+
                             cellData[rIdx][cIdx] = cellObj;
                         });
                     }
@@ -114,7 +227,13 @@ export function initUniverSpreadsheet() {
                     name: cleanName,
                     rowCount: rowCount,
                     columnCount: colCount,
-                    cellData: cellData
+                    cellData: cellData,
+                    columnData: columnData,
+                    rowData: rowData,
+                    mergeData: mergeData,
+                    showGridlines: 1,
+                    defaultColumnWidth: 95,
+                    defaultRowHeight: 24,
                 };
 
                 // Clone data sel awal untuk deteksi perubahan

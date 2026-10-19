@@ -199,18 +199,29 @@ class ExcelWorkbookService
                 $xmlReader->close();
             }
 
-            // 2. Baca sheet XML
+            // 2. Baca styles workbook
+            $styles = $this->readWorkbookStyles($zip);
+
+            // 3. Baca sheet XML
             $sheetXml = $zip->getFromName($targetPath);
+            $meta = $this->parseSheetMeta($sheetXml);
+
             $xmlReader = new XMLReader();
             $xmlReader->XML($sheetXml);
 
             $rows = [];
+            $rowHeights = [];
             $maxColIndex = 8; // Default minimal A-H
             $rowCount = 0;
 
             while ($xmlReader->read()) {
                 if ($xmlReader->nodeType == XMLReader::ELEMENT && $xmlReader->localName === 'row') {
                     $rNum = (int)$xmlReader->getAttribute('r');
+                    $rHt = (float)$xmlReader->getAttribute('ht');
+                    if ($rHt > 0) {
+                        $rowHeights[(string)$rNum] = $rHt;
+                    }
+
                     $rowXml = new SimpleXMLElement($xmlReader->readOuterXml());
                     $cells = [];
 
@@ -219,10 +230,13 @@ class ExcelWorkbookService
                         $type = (string)$c['t'];
                         $formula = isset($c->f) ? (string)$c->f : null;
                         $rawVal = isset($c->v) ? (string)$c->v : '';
+                        $sIdx = isset($c['s']) ? (int)$c['s'] : null;
 
                         // Tentukan nilai tampilan
                         if ($type === 's' && isset($sharedStrings[(int)$rawVal])) {
                             $displayVal = $sharedStrings[(int)$rawVal];
+                        } elseif ($type === 'inlineStr' && isset($c->is->t)) {
+                            $displayVal = (string)$c->is->t;
                         } elseif ($type === 'b') {
                             $displayVal = $rawVal === '1' ? 'TRUE' : 'FALSE';
                         } else {
@@ -234,8 +248,10 @@ class ExcelWorkbookService
                         $colLetter = $matches[1] ?? 'A';
                         $colIdx = $this->columnLetterToIndex($colLetter);
                         if ($colIdx > $maxColIndex) {
-                            $maxColIndex = min($colIdx, 26); // Batasi maks Z untuk tampilan optimal
+                            $maxColIndex = $colIdx;
                         }
+
+                        $cellStyle = $this->resolveCellStyle($sIdx, $styles);
 
                         $cells[$ref] = [
                             'ref' => $ref,
@@ -244,6 +260,7 @@ class ExcelWorkbookService
                             'val' => $displayVal,
                             'formula' => $formula ? '=' . $formula : null,
                             'type' => $type,
+                            'style' => $cellStyle,
                         ];
                     }
 
@@ -271,6 +288,10 @@ class ExcelWorkbookService
                 'columns' => $columns,
                 'rows' => array_values($rows),
                 'totalRows' => count($rows),
+                'maxColIndex' => $maxColIndex,
+                'cols' => $meta['cols'],
+                'merges' => $meta['merges'],
+                'rowHeights' => $rowHeights,
             ];
         } finally {
             $zip->close();
@@ -453,9 +474,12 @@ class ExcelWorkbookService
                 $xmlReader->close();
             }
 
+            // 2. Baca styles workbook sekali saja
+            $styles = $this->readWorkbookStyles($zip);
+
             $allSheets = [];
 
-            // 2. Baca data dari setiap sheet
+            // 3. Baca data dari setiap sheet
             foreach ($sheetList as $sheetInfo) {
                 $sName = $sheetInfo['name'];
                 $targetPath = $sheetInfo['target'];
@@ -465,16 +489,24 @@ class ExcelWorkbookService
                 }
 
                 $sheetXml = $zip->getFromName($targetPath);
+                $meta = $this->parseSheetMeta($sheetXml);
+
                 $xmlReader = new XMLReader();
                 $xmlReader->XML($sheetXml);
 
                 $rows = [];
+                $rowHeights = [];
                 $maxColIndex = 8;
                 $rowCount = 0;
 
                 while ($xmlReader->read()) {
                     if ($xmlReader->nodeType == XMLReader::ELEMENT && $xmlReader->localName === 'row') {
                         $rNum = (int)$xmlReader->getAttribute('r');
+                        $rHt = (float)$xmlReader->getAttribute('ht');
+                        if ($rHt > 0) {
+                            $rowHeights[(string)$rNum] = $rHt;
+                        }
+
                         $rowXml = new SimpleXMLElement($xmlReader->readOuterXml());
                         $cells = [];
 
@@ -483,9 +515,12 @@ class ExcelWorkbookService
                             $type = (string)$c['t'];
                             $formula = isset($c->f) ? (string)$c->f : null;
                             $rawVal = isset($c->v) ? (string)$c->v : '';
+                            $sIdx = isset($c['s']) ? (int)$c['s'] : null;
 
                             if ($type === 's' && isset($sharedStrings[(int)$rawVal])) {
                                 $displayVal = $sharedStrings[(int)$rawVal];
+                            } elseif ($type === 'inlineStr' && isset($c->is->t)) {
+                                $displayVal = (string)$c->is->t;
                             } elseif ($type === 'b') {
                                 $displayVal = $rawVal === '1' ? 'TRUE' : 'FALSE';
                             } else {
@@ -496,8 +531,10 @@ class ExcelWorkbookService
                             $colLetter = $matches[1] ?? 'A';
                             $colIdx = $this->columnLetterToIndex($colLetter);
                             if ($colIdx > $maxColIndex) {
-                                $maxColIndex = min($colIdx, 36);
+                                $maxColIndex = $colIdx;
                             }
+
+                            $cellStyle = $this->resolveCellStyle($sIdx, $styles);
 
                             $cells[$ref] = [
                                 'ref' => $ref,
@@ -506,6 +543,7 @@ class ExcelWorkbookService
                                 'val' => $displayVal,
                                 'formula' => $formula ? '=' . $formula : null,
                                 'type' => $type,
+                                'style' => $cellStyle,
                             ];
                         }
 
@@ -533,6 +571,9 @@ class ExcelWorkbookService
                     'rows' => array_values($rows),
                     'totalRows' => count($rows),
                     'maxColIndex' => $maxColIndex,
+                    'cols' => $meta['cols'],
+                    'merges' => $meta['merges'],
+                    'rowHeights' => $rowHeights,
                 ];
             }
 
@@ -688,6 +729,188 @@ class ExcelWorkbookService
             $zip->close();
             throw $e;
         }
+    }
+
+    /**
+     * Membaca styles (font, fill, alignment) dari xl/styles.xml secara cepat dengan streaming XML.
+     */
+    protected function readWorkbookStyles(ZipArchive $zip): array
+    {
+        $stylesXml = $zip->getFromName('xl/styles.xml');
+        if (!$stylesXml) {
+            return ['fonts' => [], 'fills' => [], 'cellXfs' => []];
+        }
+
+        $fonts = [];
+        $fills = [];
+        $cellXfs = [];
+
+        $xmlReader = new XMLReader();
+        $xmlReader->XML($stylesXml);
+
+        while ($xmlReader->read()) {
+            if ($xmlReader->nodeType == XMLReader::ELEMENT) {
+                $name = $xmlReader->localName;
+                if ($name === 'fonts') {
+                    $subReader = new XMLReader();
+                    $subReader->XML($xmlReader->readOuterXml());
+                    $fIdx = 0;
+                    while ($subReader->read()) {
+                        if ($subReader->nodeType == XMLReader::ELEMENT && $subReader->localName === 'font') {
+                            $fXml = new SimpleXMLElement($subReader->readOuterXml());
+                            $fonts[$fIdx++] = [
+                                'bold' => isset($fXml->b),
+                                'italic' => isset($fXml->i),
+                                'size' => isset($fXml->sz['val']) ? (float)$fXml->sz['val'] : null,
+                                'color' => isset($fXml->color['rgb']) ? '#' . substr((string)$fXml->color['rgb'], -6) : null,
+                            ];
+                        }
+                    }
+                    $subReader->close();
+                } elseif ($name === 'fills') {
+                    $subReader = new XMLReader();
+                    $subReader->XML($xmlReader->readOuterXml());
+                    $fillIdx = 0;
+                    while ($subReader->read()) {
+                        if ($subReader->nodeType == XMLReader::ELEMENT && $subReader->localName === 'fill') {
+                            $fillXml = new SimpleXMLElement($subReader->readOuterXml());
+                            $rgb = null;
+                            if (isset($fillXml->patternFill->fgColor['rgb'])) {
+                                $rawRgb = (string)$fillXml->patternFill->fgColor['rgb'];
+                                $rgb = '#' . substr($rawRgb, -6);
+                            }
+                            $fills[$fillIdx++] = [
+                                'rgb' => $rgb,
+                            ];
+                        }
+                    }
+                    $subReader->close();
+                } elseif ($name === 'cellXfs') {
+                    $subReader = new XMLReader();
+                    $subReader->XML($xmlReader->readOuterXml());
+                    $xfIdx = 0;
+                    while ($subReader->read()) {
+                        if ($subReader->nodeType == XMLReader::ELEMENT && $subReader->localName === 'xf') {
+                            $fontId = $subReader->getAttribute('fontId');
+                            $fillId = $subReader->getAttribute('fillId');
+                            $applyFont = $subReader->getAttribute('applyFont') === '1';
+                            $applyFill = $subReader->getAttribute('applyFill') === '1';
+
+                            $outer = $subReader->readOuterXml();
+                            $align = null;
+                            if (strpos($outer, '<alignment') !== false) {
+                                if (preg_match('/horizontal="([^"]+)"/', $outer, $hm)) {
+                                    $align['h'] = $hm[1];
+                                }
+                                if (preg_match('/vertical="([^"]+)"/', $outer, $vm)) {
+                                    $align['v'] = $vm[1];
+                                }
+                                if (strpos($outer, 'wrapText="1"') !== false) {
+                                    $align['wrap'] = true;
+                                }
+                            }
+
+                            $cellXfs[$xfIdx++] = [
+                                'fontId' => $fontId !== null ? (int)$fontId : null,
+                                'fillId' => $fillId !== null ? (int)$fillId : null,
+                                'applyFont' => $applyFont,
+                                'applyFill' => $applyFill,
+                                'align' => $align,
+                            ];
+                        }
+                    }
+                    $subReader->close();
+                    break;
+                }
+            }
+        }
+        $xmlReader->close();
+
+        return [
+            'fonts' => $fonts,
+            'fills' => $fills,
+            'cellXfs' => $cellXfs,
+        ];
+    }
+
+    /**
+     * Membaca metadata sheet (kolom kustom lebar, sel yang dimerge) dari XML worksheet.
+     */
+    protected function parseSheetMeta(string $sheetXml, int $maxCols = 60): array
+    {
+        $cols = [];
+        if (preg_match('/<cols>(.*?)<\/cols>/s', $sheetXml, $colMatches)) {
+            preg_match_all('/<col\s+([^>]+)\/>/', $colMatches[1], $colItems);
+            foreach ($colItems[1] as $attrs) {
+                $min = 1; $max = 1; $w = 10;
+                if (preg_match('/min="(\d+)"/', $attrs, $m)) $min = (int)$m[1];
+                if (preg_match('/max="(\d+)"/', $attrs, $m)) $max = (int)$m[1];
+                if (preg_match('/width="([0-9.]+)"/', $attrs, $m)) $w = (float)$m[1];
+                for ($c = $min; $c <= min($max, $maxCols); $c++) {
+                    $cols[(string)$c] = $w;
+                }
+            }
+        }
+
+        $merges = [];
+        if (preg_match('/<mergeCells[^>]*>(.*?)<\/mergeCells>/s', $sheetXml, $mMatches)) {
+            preg_match_all('/<mergeCell\s+ref="([A-Z0-9:]+)"/', $mMatches[1], $mItems);
+            $merges = $mItems[1];
+        }
+
+        return [
+            'cols' => $cols,
+            'merges' => $merges,
+        ];
+    }
+
+    /**
+     * Mengonversi format style OpenXML ke objek style standar Univer.
+     */
+    protected function resolveCellStyle(?int $sIdx, array $styles): ?array
+    {
+        if ($sIdx === null || !isset($styles['cellXfs'][$sIdx])) {
+            return null;
+        }
+
+        $xf = $styles['cellXfs'][$sIdx];
+        $font = isset($xf['fontId']) && isset($styles['fonts'][$xf['fontId']]) ? $styles['fonts'][$xf['fontId']] : null;
+        $fill = isset($xf['fillId']) && isset($styles['fills'][$xf['fillId']]) ? $styles['fills'][$xf['fillId']] : null;
+        $align = $xf['align'] ?? null;
+
+        $sData = [];
+        if (!empty($font['bold'])) {
+            $sData['bl'] = 1;
+        }
+        if (!empty($font['italic'])) {
+            $sData['it'] = 1;
+        }
+        if (!empty($font['color'])) {
+            $sData['cl'] = ['rgb' => $font['color']];
+        }
+        if (!empty($font['size'])) {
+            $sData['fs'] = $font['size'];
+        }
+        if (!empty($fill['rgb'])) {
+            $sData['bg'] = ['rgb' => $fill['rgb']];
+        }
+        if (!empty($align['h'])) {
+            $hMap = ['left' => 1, 'center' => 2, 'right' => 3];
+            if (isset($hMap[$align['h']])) {
+                $sData['ht'] = $hMap[$align['h']];
+            }
+        }
+        if (!empty($align['v'])) {
+            $vMap = ['top' => 1, 'center' => 2, 'middle' => 2, 'bottom' => 3];
+            if (isset($vMap[$align['v']])) {
+                $sData['vt'] = $vMap[$align['v']];
+            }
+        }
+        if (!empty($align['wrap'])) {
+            $sData['tb'] = 3;
+        }
+
+        return !empty($sData) ? $sData : null;
     }
 
     private function columnLetterToIndex(string $letter): int
