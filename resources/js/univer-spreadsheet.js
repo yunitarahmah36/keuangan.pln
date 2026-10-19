@@ -137,6 +137,7 @@ export function initUniverSpreadsheet() {
                 presets: [
                     UniverSheetsCorePreset({
                         container: mountId,
+                        footer: false,
                     }),
                 ],
             });
@@ -340,17 +341,119 @@ export function initUniverSpreadsheet() {
                 // Command listener optional
             }
 
-            // Quick Switcher Kelompok (jika elemen switcher ada)
+            // Setup Navigasi Tab Sheet Berdasarkan Kelompok yang Dipilih
+            const tabsList = document.getElementById('group-sheet-tabs-list');
+            const groupBadge = document.getElementById('group-tabs-kelompok-badge');
+            const countLabel = document.getElementById('group-tabs-count-label');
+            const headerKelompokLabel = document.getElementById('header-kelompok-label');
             const selectKelompok = document.getElementById('select-switch-kelompok');
+            const statusBarSheet = document.getElementById('status-bar-sheet-name');
+
+            function renderTabsForGroup(groupName, sheetToSelect = null) {
+                const kelompokData = window.rawKelompokData || {};
+                const sheetsInGroup = kelompokData[groupName] || [];
+
+                if (groupBadge) groupBadge.textContent = groupName;
+                if (headerKelompokLabel) headerKelompokLabel.textContent = groupName;
+                if (countLabel) countLabel.textContent = `${sheetsInGroup.length} Sheet`;
+                if (selectKelompok && selectKelompok.value !== groupName) {
+                    selectKelompok.value = groupName;
+                }
+
+                if (!tabsList) return;
+                tabsList.innerHTML = '';
+
+                // Tentukan sheet mana yang aktif dalam kelompok ini
+                const activeTarget = sheetToSelect && sheetsInGroup.includes(sheetToSelect)
+                    ? sheetToSelect
+                    : (sheetsInGroup[0] || null);
+
+                sheetsInGroup.forEach((sName) => {
+                    const isActive = (sName === activeTarget);
+                    const btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.className = `univer-custom-tab-item px-3 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer border ${
+                        isActive
+                            ? 'active bg-white text-[#107C41] border-[#107C41] shadow-xs'
+                            : 'bg-white/70 text-[#6B4D3F] hover:bg-white hover:text-[#107C41] border-[rgba(75,46,33,0.1)]'
+                    }`;
+                    btn.dataset.sheetName = sName;
+                    btn.innerHTML = `
+                        <svg class="w-3.5 h-3.5 flex-shrink-0 ${isActive ? 'text-[#107C41]' : 'text-[#8E7467]'}" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                            <polyline points="14 2 14 8 20 8" fill="#FAF8F4"></polyline>
+                        </svg>
+                        <span class="truncate max-w-[180px]">${sName}</span>
+                    `;
+
+                    btn.addEventListener('click', () => {
+                        // Aktifkan sheet di Univer instance
+                        const targetWs = fWorkbook.getSheetByName(sName);
+                        if (targetWs) {
+                            try {
+                                targetWs.activate();
+                            } catch (e) {
+                                console.warn('Gagal aktivasi sheet:', e);
+                            }
+                        }
+
+                        // Update tampilan tab aktif
+                        tabsList.querySelectorAll('.univer-custom-tab-item').forEach((tb) => {
+                            const isCur = tb.dataset.sheetName === sName;
+                            tb.className = `univer-custom-tab-item px-3 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer border ${
+                                isCur
+                                    ? 'active bg-white text-[#107C41] border-[#107C41] shadow-xs'
+                                    : 'bg-white/70 text-[#6B4D3F] hover:bg-white hover:text-[#107C41] border-[rgba(75,46,33,0.1)]'
+                            }`;
+                            const svg = tb.querySelector('svg');
+                            if (svg) svg.className = `w-3.5 h-3.5 flex-shrink-0 ${isCur ? 'text-[#107C41]' : 'text-[#8E7467]'}`;
+                        });
+
+                        if (statusBarSheet) statusBarSheet.textContent = sName;
+                    });
+
+                    tabsList.appendChild(btn);
+                });
+
+                // Aktifkan sheet awal kelompok di Univer
+                if (activeTarget) {
+                    const targetWs = fWorkbook.getSheetByName(activeTarget);
+                    if (targetWs) {
+                        try {
+                            targetWs.activate();
+                        } catch (e) {
+                            console.warn('Gagal aktivasi sheet awal kelompok:', e);
+                        }
+                    }
+                    if (statusBarSheet) statusBarSheet.textContent = activeTarget;
+                }
+            }
+
+            // Inisialisasi navigasi kelompok awal
+            const initialKelompok = container.dataset.activeKelompok ||
+                                    (selectKelompok ? selectKelompok.value : null) ||
+                                    (window.rawKelompokData ? Object.keys(window.rawKelompokData)[0] : 'Laporan Utama');
+            renderTabsForGroup(initialKelompok, activeSheetQuery);
+
+            // Listener pergantian kelompok via dropdown
             if (selectKelompok) {
                 selectKelompok.addEventListener('change', function () {
                     const targetGroup = this.value;
-                    const kelompokData = window.rawKelompokData || {};
-                    const sheetsInGroup = kelompokData[targetGroup] || [];
-                    if (sheetsInGroup.length > 0) {
-                        const targetSheet = fWorkbook.getSheetByName(sheetsInGroup[0]);
-                        if (targetSheet) targetSheet.activate();
-                    }
+                    renderTabsForGroup(targetGroup, null);
+                });
+            }
+
+            // Scroll button panah tab kiri / kanan
+            const btnScrollTabsLeft = document.getElementById('btn-scroll-group-tabs-left');
+            const btnScrollTabsRight = document.getElementById('btn-scroll-group-tabs-right');
+            if (btnScrollTabsLeft && tabsList) {
+                btnScrollTabsLeft.addEventListener('click', () => {
+                    tabsList.scrollBy({ left: -140, behavior: 'smooth' });
+                });
+            }
+            if (btnScrollTabsRight && tabsList) {
+                btnScrollTabsRight.addEventListener('click', () => {
+                    tabsList.scrollBy({ left: 140, behavior: 'smooth' });
                 });
             }
 

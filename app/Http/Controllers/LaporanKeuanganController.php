@@ -421,6 +421,37 @@ class LaporanKeuanganController extends Controller
     }
 
     /**
+     * Unduh file Excel asli dengan header anti-cache.
+     */
+    public function download(int $id)
+    {
+        $laporan = LaporanKeuangan::find($id);
+        if (!$laporan) {
+            $history = ImportHistory::find($id);
+            if ($history && $history->laporan_keuangan_id) {
+                $laporan = LaporanKeuangan::find($history->laporan_keuangan_id);
+            }
+        }
+
+        if (!$laporan) {
+            abort(404, 'Data laporan tidak ditemukan.');
+        }
+
+        $fullPath = storage_path('app/public/' . $laporan->path_file);
+        $realPath = realpath($fullPath);
+        $baseAllowed = realpath(storage_path('app/public/laporan-keuangan'));
+
+        if (!$realPath || !$baseAllowed || !str_starts_with($realPath, $baseAllowed) || !file_exists($realPath)) {
+            abort(404, 'File Excel fisik tidak ditemukan.');
+        }
+
+        return response()->download($realPath, $laporan->nama_file, [
+            'Cache-Control' => 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0',
+            'Pragma' => 'no-cache',
+        ]);
+    }
+
+    /**
      * API untuk menyimpan perubahan sel dan rumus ke workbook asli.
      */
     public function saveCells(Request $request, int $id): JsonResponse

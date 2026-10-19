@@ -147,9 +147,34 @@ class LaporanKeuanganTest extends TestCase
         $response->assertSee('NERACA');
         $response->assertSee('Kembali ke Kelompok Laporan');
         $response->assertSee('Laporan_Keuangan_Sept2026.xlsx');
+        $response->assertSee('group-sheet-tabs-bar');
         // Assert sidebar shows kelompok in excel online as well
         $response->assertSee('sidebar-kelompok-wrapper');
         $response->assertSee('sidebar-kelompok-nav-item');
+    }
+
+    public function test_download_route_downloads_excel_file(): void
+    {
+        $testPath = storage_path('app/public/laporan-keuangan/test_download.xlsx');
+        if (!is_dir(dirname($testPath))) {
+            mkdir(dirname($testPath), 0755, true);
+        }
+        file_put_contents($testPath, 'fake xlsx content');
+
+        $laporan = LaporanKeuangan::create([
+            'nama_laporan' => 'Laporan Keuangan Bulanan',
+            'bulan' => 9,
+            'tahun' => 2026,
+            'nama_file' => 'Test_Download.xlsx',
+            'path_file' => 'laporan-keuangan/test_download.xlsx',
+            'status' => 'Berhasil',
+        ]);
+
+        $response = $this->get("/laporan-keuangan-bulanan/{$laporan->id}/download");
+        $response->assertStatus(200);
+        $response->assertHeader('Content-Disposition');
+
+        @unlink($testPath);
     }
 
     public function test_sheet_data_api_reads_workbook_sheet(): void

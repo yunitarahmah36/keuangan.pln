@@ -23,6 +23,11 @@ Route::get(
 )->name('laporan-keuangan.excel-online');
 
 Route::get(
+    '/laporan-keuangan-bulanan/{id}/download',
+    [LaporanKeuanganController::class, 'download']
+)->name('laporan-keuangan.download');
+
+Route::get(
     '/laporan-keuangan-bulanan/{id}/sheet-data',
     [LaporanKeuanganController::class, 'sheetData']
 )->name('laporan-keuangan.sheet-data');

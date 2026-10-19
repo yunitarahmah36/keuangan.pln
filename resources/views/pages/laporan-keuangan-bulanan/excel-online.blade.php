@@ -91,6 +91,21 @@
 
             <!-- Right Controls: Tombol Simpan & Actions -->
             <div class="flex items-center gap-2 flex-shrink-0">
+                <!-- Tombol Unduh .XLSX Asli -->
+                @if ($laporan->path_file)
+                    <a href="{{ Route::has('laporan-keuangan.download') ? route('laporan-keuangan.download', $laporan->id) : asset('storage/' . $laporan->path_file) }}"
+                       id="btn-download-xlsx"
+                       class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/15 hover:bg-white/25 text-white text-xs font-bold shadow-2xs transition-all active:scale-95 cursor-pointer"
+                       title="Unduh File Excel Asli (.xlsx)">
+                        <svg class="w-4 h-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                            <polyline points="7 10 12 15 17 10"></polyline>
+                            <line x1="12" y1="15" x2="12" y2="3"></line>
+                        </svg>
+                        <span class="hidden sm:inline">Unduh .XLSX</span>
+                    </a>
+                @endif
+
                 <!-- Tombol Simpan Perubahan -->
                 <button type="button"
                         id="btn-save-spreadsheet"
@@ -124,10 +139,50 @@
             </div>
         </div>
 
-        <!-- 2. UNIVER SPREADSHEET WORKSPACE CONTAINER -->
+        <!-- 2. KELOMPOK & SHEET TABS NAVIGATION BAR (HANYA MENAMPILKAN SHEET SESUAI KELOMPOK AKTIF) -->
+        <div id="group-sheet-tabs-bar" class="bg-[#FAF8F4] border-b border-[#D4D4D4] px-4 py-2 flex items-center justify-between gap-3 select-none">
+            <!-- Left: Group indicator & Scroll controls & Tab buttons -->
+            <div class="flex items-center gap-2 flex-1 min-w-0 overflow-hidden">
+                <div class="hidden md:flex items-center gap-1.5 px-2.5 py-1 bg-white border border-[rgba(75,46,33,0.12)] rounded-lg text-xs font-bold text-[#4B2E21] shadow-2xs flex-shrink-0">
+                    <span class="w-2 h-2 rounded-full bg-[#107C41]"></span>
+                    <span id="group-tabs-kelompok-badge">{{ $activeKelompok }}</span>
+                </div>
+
+                <!-- Panah Geser Tab -->
+                <div class="flex items-center text-[#605E5C] pr-1.5 border-r border-[#D4D4D4] flex-shrink-0">
+                    <button type="button" id="btn-scroll-group-tabs-left" class="p-1 hover:bg-[#EDEBE9] rounded cursor-pointer text-xs" title="Geser Tab ke Kiri">◀</button>
+                    <button type="button" id="btn-scroll-group-tabs-right" class="p-1 hover:bg-[#EDEBE9] rounded cursor-pointer text-xs" title="Geser Tab ke Kanan">▶</button>
+                </div>
+
+                <!-- Container Tab Sheet untuk Kelompok yang Dipilih Saja -->
+                <div class="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 flex-1 min-w-0" id="group-sheet-tabs-list">
+                    @php $sheetsInActive = $kelompokSheet[$activeKelompok] ?? [$activeSheet]; @endphp
+                    @foreach ($sheetsInActive as $sName)
+                        @php $isActive = ($sName === $activeSheet); @endphp
+                        <button type="button"
+                                class="univer-custom-tab-item px-3 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer border {{ $isActive ? 'active bg-white text-[#107C41] border-[#107C41] shadow-xs' : 'bg-white/70 text-[#6B4D3F] hover:bg-white hover:text-[#107C41] border-[rgba(75,46,33,0.1)]' }}"
+                                data-sheet-name="{{ $sName }}">
+                            <svg class="w-3.5 h-3.5 flex-shrink-0 {{ $isActive ? 'text-[#107C41]' : 'text-[#8E7467]' }}" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                <polyline points="14 2 14 8 20 8" fill="#FAF8F4"></polyline>
+                            </svg>
+                            <span class="truncate max-w-[180px]">{{ $sName }}</span>
+                        </button>
+                    @endforeach
+                </div>
+            </div>
+
+            <!-- Right: Total Sheet info in current group -->
+            <div class="text-[11px] font-bold text-[#8E7467] flex items-center gap-1 flex-shrink-0">
+                <span id="group-tabs-count-label">{{ count($sheetsInActive) }} Sheet</span>
+            </div>
+        </div>
+
+        <!-- 3. UNIVER SPREADSHEET WORKSPACE CONTAINER -->
         <div class="univer-spreadsheet-instance flex-1 w-full bg-white relative overflow-hidden"
              id="spreadsheet-container"
              data-laporan-id="{{ $laporan->id }}"
+             data-active-kelompok="{{ $activeKelompok }}"
              data-active-sheet="{{ $activeSheet }}"
              data-csrf="{{ csrf_token() }}">
             
