@@ -92,29 +92,41 @@ export function initUniverSpreadsheet() {
             const sheetsMap = {};
             const initialSnapshots = {};
 
+            window.sheetTabColors = window.sheetTabColors || {};
+
             rawSheets.forEach((sData, sIndex) => {
                 const cleanName = sData.sheet || `Sheet${sIndex + 1}`;
                 const sheetId = `sheet_${sIndex}_${cleanName.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
                 sheetOrder.push(sheetId);
 
-                // 1. Ekstrak lebar kolom kustom dari file Excel
+                if (sData.tabColor) {
+                    window.sheetTabColors[cleanName] = sData.tabColor;
+                }
+
+                // 1. Ekstrak lebar kolom kustom & hidden columns dari file Excel
                 const columnData = {};
                 if (sData.cols && typeof sData.cols === 'object') {
                     Object.keys(sData.cols).forEach((colNumStr) => {
                         const colNum = parseInt(colNumStr, 10);
                         const colIdx = colNum - 1; // 0-indexed
-                        const wVal = parseFloat(sData.cols[colNumStr]);
+                        const colVal = sData.cols[colNumStr];
+                        const wVal = typeof colVal === 'object' && colVal.w !== undefined ? parseFloat(colVal.w) : parseFloat(colVal);
+                        const isHidden = typeof colVal === 'object' ? Boolean(colVal.hidden) : false;
                         let px;
                         if (wVal < 2) {
                             px = 16; // Kolom spasi/indentasi sempit khas laporan keuangan PLN
                         } else {
                             px = Math.round(wVal * 8.5) + 6;
                         }
-                        columnData[colIdx] = { w: Math.max(16, px) };
+                        const colEntry = { w: Math.max(16, px) };
+                        if (isHidden) {
+                            colEntry.hd = 1;
+                        }
+                        columnData[colIdx] = colEntry;
                     });
                 }
 
-                // 2. Ekstrak tinggi baris kustom
+                // 2. Ekstrak tinggi baris kustom & hidden rows dari file Excel
                 const rowData = {};
                 if (sData.rowHeights && typeof sData.rowHeights === 'object') {
                     Object.keys(sData.rowHeights).forEach((rNumStr) => {
@@ -122,8 +134,14 @@ export function initUniverSpreadsheet() {
                         const rIdx = rNum - 1;
                         const ht = parseFloat(sData.rowHeights[rNumStr]);
                         if (ht > 0) {
-                            rowData[rIdx] = { h: Math.round(ht * 1.33) };
+                            rowData[rIdx] = { ...(rowData[rIdx] || {}), h: Math.round(ht * 1.33) };
                         }
+                    });
+                }
+                if (Array.isArray(sData.hiddenRows)) {
+                    sData.hiddenRows.forEach((rNum) => {
+                        const rIdx = rNum - 1;
+                        rowData[rIdx] = { ...(rowData[rIdx] || {}), hd: 1 };
                     });
                 }
 
@@ -172,6 +190,17 @@ export function initUniverSpreadsheet() {
                                 style.ht = 3; // Rata kanan untuk angka
                             }
 
+                            // Hyperlinks
+                            if (c.hyperlink) {
+                                cellObj.custom = { ...(cellObj.custom || {}), hyperlink: c.hyperlink };
+                                if (!style.cl) {
+                                    style.cl = { rgb: '#0563C1' }; // Standard Excel hyperlink blue
+                                }
+                                if (!style.ul) {
+                                    style.ul = { s: 1 }; // Underline
+                                }
+                            }
+
                             if (Object.keys(style).length > 0) {
                                 cellObj.s = style;
                             }
@@ -184,7 +213,7 @@ export function initUniverSpreadsheet() {
                 const rowCount = Math.max(80, (sData.totalRows || 0) + 30);
                 const colCount = Math.max(26, (sData.maxColIndex || 10) + 6);
 
-                sheetsMap[sheetId] = {
+                const sheetDef = {
                     id: sheetId,
                     name: cleanName,
                     rowCount: rowCount,
@@ -193,10 +222,41 @@ export function initUniverSpreadsheet() {
                     columnData: columnData,
                     rowData: rowData,
                     mergeData: mergeData,
-                    showGridlines: 1,
+                    showGridlines: sData.showGridlines !== undefined ? sData.showGridlines : 1,
+                    zoomRatio: sData.zoomRatio || 1,
                     defaultColumnWidth: 95,
                     defaultRowHeight: 24,
                 };
+
+                // Terapkan Freeze Panes asli dari Excel untuk semua sheet yang memilikinya
+                if (sData.freeze && (sData.freeze.xSplit > 0 || sData.freeze.ySplit > 0)) {
+                    sheetDef.freeze = {
+                        xSplit: sData.freeze.xSplit || 0,
+                        ySplit: sData.freeze.ySplit || 0,
+                        startRow: sData.freeze.startRow !== undefined ? sData.freeze.startRow : (sData.freeze.ySplit || 0),
+                        startColumn: sData.freeze.startColumn !== undefined ? sData.freeze.startColumn : (sData.freeze.xSplit || 0),
+                    };
+                }
+
+                // Warna Tab Asli Excel
+                if (sData.tabColor) {
+                    sheetDef.tabColor = sData.tabColor;
+                }
+
+                // Status Sheet Tersembunyi (Hidden Sheets)
+                if (sData.hidden) {
+                    sheetDef.hidden = 1;
+                }
+
+                // Simpan metadata asli lainnya (AutoFilter, Data Validation)
+                if (sData.autoFilter || (sData.dataValidations && sData.dataValidations.length > 0)) {
+                    sheetDef.custom = {
+                        autoFilter: sData.autoFilter || null,
+                        dataValidations: sData.dataValidations || [],
+                    };
+                }
+
+                sheetsMap[sheetId] = sheetDef;
 
                 // Clone data sel awal untuk deteksi perubahan
                 initialSnapshots[sheetId] = JSON.parse(JSON.stringify(cellData));
@@ -586,19 +646,23 @@ function updateActiveTabVisual(sheetName) {
 
         tab.classList.toggle('active', isActive);
 
-        // Gunakan style langsung agar status aktif terlihat jelas
         tab.style.backgroundColor = isActive ? '#107C41' : '#ffffff';
-        tab.style.color = isActive ? '#ffffff' : '#4B2E21';
+        tab.style.color = isActive ? '#ffffff' : '#374151';
         tab.style.borderColor = isActive ? '#107C41' : '#D4D4D4';
-        tab.style.borderWidth = isActive ? '2px' : '1px';
+        tab.style.borderWidth = '1px';
         tab.style.fontWeight = isActive ? '700' : '500';
         tab.style.boxShadow = isActive
-            ? '0 2px 6px rgba(16, 124, 65, 0.2)'
-            : 'none';
+            ? '0 2px 5px rgba(16, 124, 65, 0.25)'
+            : '0 1px 2px rgba(0, 0, 0, 0.04)';
 
-        const svg = tab.querySelector('svg');
+        const svg = tab.querySelector('.tab-icon') || tab.querySelector('svg');
         if (svg) {
             svg.style.color = isActive ? '#ffffff' : '#8E7467';
+        }
+
+        const dot = tab.querySelector('.tab-color-dot');
+        if (dot) {
+            dot.style.boxShadow = isActive ? '0 0 0 1.5px rgba(255, 255, 255, 0.9)' : '0 0 0 1px rgba(0, 0, 0, 0.15)';
         }
     });
 
@@ -631,21 +695,35 @@ function updateActiveTabVisual(sheetName) {
 
 sheetsInGroup.forEach((sName) => {
     const isActive = sName === activeTarget;
+    const tabColor = (window.sheetTabColors && window.sheetTabColors[sName]) || null;
     const btn = document.createElement('button');
 
     btn.type = 'button';
     btn.dataset.sheetName = sName;
-    btn.className = 'univer-custom-tab-item px-3.5 py-1.5 text-xs rounded-lg transition-all flex items-center gap-1.5 cursor-pointer border';
+    btn.className = `univer-custom-tab-item px-3 py-1.5 text-xs rounded-lg transition-all flex items-center gap-1.5 cursor-pointer border whitespace-nowrap shadow-xs ${
+        isActive
+            ? 'active bg-[#107C41] text-white border-[#107C41] font-bold shadow-xs'
+            : 'bg-white text-[#374151] hover:bg-[#FAF8F4] hover:text-[#107C41] border-[#D4D4D4] hover:border-[#107C41]/40 font-medium'
+    }`;
+
+    let colorDot = '';
+    if (tabColor) {
+        colorDot = `<span class="tab-color-dot w-2.5 h-2.5 rounded-full flex-shrink-0" style="background-color: ${tabColor}; ${isActive ? 'box-shadow: 0 0 0 1.5px rgba(255,255,255,0.9);' : 'box-shadow: 0 0 0 1px rgba(0,0,0,0.15);'}" title="Warna tab: ${tabColor}"></span>`;
+    }
 
     btn.innerHTML = `
-        <svg class="w-3.5 h-3.5 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
+        ${colorDot}
+        <svg class="tab-icon w-3.5 h-3.5 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor" style="color: ${isActive ? '#ffffff' : '#8E7467'};">
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-            <polyline points="14 2 14 8 20 8" fill="#FAF8F4"></polyline>
+            <polyline points="14 2 14 8 20 8" fill="${isActive ? '#0E6835' : '#FAF8F4'}"></polyline>
         </svg>
-        <span class="truncate max-w-[180px]"></span>
+        <span class="tab-title truncate max-w-[180px] leading-tight"></span>
     `;
 
-    btn.querySelector('span').textContent = sName;
+    const titleSpan = btn.querySelector('.tab-title');
+    if (titleSpan) {
+        titleSpan.textContent = sName;
+    }
 
     btn.addEventListener('click', () => {
         const targetWs = fWorkbook.getSheetByName(sName);

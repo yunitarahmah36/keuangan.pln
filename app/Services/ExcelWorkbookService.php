@@ -53,6 +53,7 @@ class ExcelWorkbookService
             $sheetNodes = $wbXp->query('//*[local-name()="sheets"]/*[local-name()="sheet"]');
             foreach ($sheetNodes as $node) {
                 $name = $node->getAttribute('name');
+                $state = $node->getAttribute('state');
                 $rId = $node->getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'id');
                 $target = $relsMap[$rId] ?? null;
 
@@ -60,6 +61,7 @@ class ExcelWorkbookService
                     'name' => $name,
                     'rId' => $rId,
                     'target' => $target,
+                    'hidden' => strtolower((string)$state) === 'hidden',
                 ];
             }
 
@@ -311,9 +313,11 @@ class ExcelWorkbookService
         try {
             $sheets = $this->getSheetList($filePath);
             $targetPath = null;
+            $targetSheetInfo = null;
             foreach ($sheets as $s) {
                 if (strcasecmp($s['name'], $sheetName) === 0) {
                     $targetPath = $s['target'];
+                    $targetSheetInfo = $s;
                     break;
                 }
             }
@@ -352,11 +356,40 @@ class ExcelWorkbookService
             $sheetXml = $zip->getFromName($targetPath);
             $meta = $this->parseSheetMeta($sheetXml);
 
+            // Baca relasi hyperlink worksheet
+            $relsPath = dirname($targetPath) . '/_rels/' . basename($targetPath) . '.rels';
+            $relsXml = $zip->getFromName($relsPath);
+            $hyperlinkRels = [];
+            if ($relsXml !== false) {
+                if (preg_match_all('/<Relationship\s+([^>]+)\/>/', $relsXml, $hRels)) {
+                    foreach ($hRels[1] as $rAttr) {
+                        if (strpos($rAttr, 'hyperlink') !== false) {
+                            $rId = preg_match('/Id="([^"]+)"/', $rAttr, $m) ? $m[1] : null;
+                            $target = preg_match('/Target="([^"]+)"/', $rAttr, $m) ? $m[1] : null;
+                            if ($rId && $target) {
+                                $hyperlinkRels[$rId] = html_entity_decode($target, ENT_QUOTES | ENT_XML1, 'UTF-8');
+                            }
+                        }
+                    }
+                }
+            }
+            $hyperlinks = [];
+            if (preg_match('/<hyperlinks>(.*?)<\/hyperlinks>/s', $sheetXml, $hlM)) {
+                if (preg_match_all('/<hyperlink\s+ref="([A-Z0-9]+)"\s+r:id="([^"]+)"/i', $hlM[1], $hlItems, PREG_SET_ORDER)) {
+                    foreach ($hlItems as $hli) {
+                        if (isset($hyperlinkRels[$hli[2]])) {
+                            $hyperlinks[$hli[1]] = $hyperlinkRels[$hli[2]];
+                        }
+                    }
+                }
+            }
+
             $xmlReader = new XMLReader();
             $xmlReader->XML($sheetXml);
 
             $rows = [];
             $rowHeights = [];
+            $hiddenRows = [];
             $maxColIndex = 8; // Default minimal A-H
             $rowCount = 0;
 
@@ -366,6 +399,10 @@ class ExcelWorkbookService
                     $rHt = (float)$xmlReader->getAttribute('ht');
                     if ($rHt > 0) {
                         $rowHeights[(string)$rNum] = $rHt;
+                    }
+                    $rHidden = $xmlReader->getAttribute('hidden') === '1' || $xmlReader->getAttribute('hidden') === 'true';
+                    if ($rHidden) {
+                        $hiddenRows[] = $rNum;
                     }
 
                     $rowXml = new SimpleXMLElement($xmlReader->readOuterXml());
@@ -407,6 +444,7 @@ class ExcelWorkbookService
                             'formula' => $formula ? '=' . $formula : null,
                             'type' => $type,
                             'style' => $cellStyle,
+                            'hyperlink' => $hyperlinks[$ref] ?? null,
                         ];
                     }
 
@@ -431,6 +469,7 @@ class ExcelWorkbookService
 
             return [
                 'sheet' => $sheetName,
+                'hidden' => !empty($targetSheetInfo['hidden']),
                 'columns' => $columns,
                 'rows' => array_values($rows),
                 'totalRows' => count($rows),
@@ -438,6 +477,13 @@ class ExcelWorkbookService
                 'cols' => $meta['cols'],
                 'merges' => $meta['merges'],
                 'rowHeights' => $rowHeights,
+                'hiddenRows' => $hiddenRows,
+                'freeze' => $meta['freeze'],
+                'tabColor' => $meta['tabColor'],
+                'showGridlines' => $meta['showGridlines'],
+                'zoomRatio' => $meta['zoomRatio'],
+                'autoFilter' => $meta['autoFilter'],
+                'dataValidations' => $meta['dataValidations'],
             ];
         } finally {
             $zip->close();
@@ -637,11 +683,40 @@ class ExcelWorkbookService
                 $sheetXml = $zip->getFromName($targetPath);
                 $meta = $this->parseSheetMeta($sheetXml);
 
+                // Baca relasi hyperlink worksheet
+                $relsPath = dirname($targetPath) . '/_rels/' . basename($targetPath) . '.rels';
+                $relsXml = $zip->getFromName($relsPath);
+                $hyperlinkRels = [];
+                if ($relsXml !== false) {
+                    if (preg_match_all('/<Relationship\s+([^>]+)\/>/', $relsXml, $hRels)) {
+                        foreach ($hRels[1] as $rAttr) {
+                            if (strpos($rAttr, 'hyperlink') !== false) {
+                                $rId = preg_match('/Id="([^"]+)"/', $rAttr, $m) ? $m[1] : null;
+                                $target = preg_match('/Target="([^"]+)"/', $rAttr, $m) ? $m[1] : null;
+                                if ($rId && $target) {
+                                    $hyperlinkRels[$rId] = html_entity_decode($target, ENT_QUOTES | ENT_XML1, 'UTF-8');
+                                }
+                            }
+                        }
+                    }
+                }
+                $hyperlinks = [];
+                if (preg_match('/<hyperlinks>(.*?)<\/hyperlinks>/s', $sheetXml, $hlM)) {
+                    if (preg_match_all('/<hyperlink\s+ref="([A-Z0-9]+)"\s+r:id="([^"]+)"/i', $hlM[1], $hlItems, PREG_SET_ORDER)) {
+                        foreach ($hlItems as $hli) {
+                            if (isset($hyperlinkRels[$hli[2]])) {
+                                $hyperlinks[$hli[1]] = $hyperlinkRels[$hli[2]];
+                            }
+                        }
+                    }
+                }
+
                 $xmlReader = new XMLReader();
                 $xmlReader->XML($sheetXml);
 
                 $rows = [];
                 $rowHeights = [];
+                $hiddenRows = [];
                 $maxColIndex = 8;
                 $rowCount = 0;
 
@@ -651,6 +726,10 @@ class ExcelWorkbookService
                         $rHt = (float)$xmlReader->getAttribute('ht');
                         if ($rHt > 0) {
                             $rowHeights[(string)$rNum] = $rHt;
+                        }
+                        $rHidden = $xmlReader->getAttribute('hidden') === '1' || $xmlReader->getAttribute('hidden') === 'true';
+                        if ($rHidden) {
+                            $hiddenRows[] = $rNum;
                         }
 
                         $rowXml = new SimpleXMLElement($xmlReader->readOuterXml());
@@ -690,6 +769,7 @@ class ExcelWorkbookService
                                 'formula' => $formula ? '=' . $formula : null,
                                 'type' => $type,
                                 'style' => $cellStyle,
+                                'hyperlink' => $hyperlinks[$ref] ?? null,
                             ];
                         }
 
@@ -713,6 +793,7 @@ class ExcelWorkbookService
 
                 $allSheets[] = [
                     'sheet' => $sName,
+                    'hidden' => !empty($sheetInfo['hidden']),
                     'columns' => $columns,
                     'rows' => array_values($rows),
                     'totalRows' => count($rows),
@@ -720,6 +801,13 @@ class ExcelWorkbookService
                     'cols' => $meta['cols'],
                     'merges' => $meta['merges'],
                     'rowHeights' => $rowHeights,
+                    'hiddenRows' => $hiddenRows,
+                    'freeze' => $meta['freeze'],
+                    'tabColor' => $meta['tabColor'],
+                    'showGridlines' => $meta['showGridlines'],
+                    'zoomRatio' => $meta['zoomRatio'],
+                    'autoFilter' => $meta['autoFilter'],
+                    'dataValidations' => $meta['dataValidations'],
                 ];
             }
 
@@ -1104,7 +1192,7 @@ class ExcelWorkbookService
     }
 
     /**
-     * Membaca metadata sheet (kolom kustom lebar, sel yang dimerge) dari XML worksheet.
+     * Membaca metadata sheet (kolom, merge, freeze panes, tab color, gridlines, zoom, filter, data validations).
      */
     protected function parseSheetMeta(string $sheetXml, int $maxCols = 150): array
     {
@@ -1116,8 +1204,12 @@ class ExcelWorkbookService
                 if (preg_match('/min="(\d+)"/', $attrs, $m)) $min = (int)$m[1];
                 if (preg_match('/max="(\d+)"/', $attrs, $m)) $max = (int)$m[1];
                 if (preg_match('/width="([0-9.]+)"/', $attrs, $m)) $w = (float)$m[1];
+                $hidden = (bool)preg_match('/hidden="1"|hidden="true"/i', $attrs);
                 for ($c = $min; $c <= min($max, $maxCols); $c++) {
-                    $cols[(string)$c] = $w;
+                    $cols[(string)$c] = [
+                        'w' => $w,
+                        'hidden' => $hidden,
+                    ];
                 }
             }
         }
@@ -1128,9 +1220,86 @@ class ExcelWorkbookService
             $merges = $mItems[1];
         }
 
+        // Freeze Panes
+        $freeze = null;
+        if (preg_match('/<pane\s+([^>]+)\/>/', $sheetXml, $pMatches)) {
+            $pAttrs = $pMatches[1];
+            $state = preg_match('/state="([^"]+)"/', $pAttrs, $m) ? $m[1] : '';
+            if ($state === 'frozen' || $state === 'frozenSplit' || preg_match('/xSplit|ySplit/', $pAttrs)) {
+                $xSplit = preg_match('/xSplit="(\d+)"/', $pAttrs, $m) ? (int)$m[1] : 0;
+                $ySplit = preg_match('/ySplit="(\d+)"/', $pAttrs, $m) ? (int)$m[1] : 0;
+                $topLeftCell = preg_match('/topLeftCell="([A-Z0-9]+)"/', $pAttrs, $m) ? $m[1] : null;
+
+                $startColumn = $xSplit;
+                $startRow = $ySplit;
+                if ($topLeftCell && preg_match('/^([A-Z]+)(\d+)$/', $topLeftCell, $tlm)) {
+                    $startColumn = $this->columnLetterToIndex($tlm[1]) - 1;
+                    $startRow = (int)$tlm[2] - 1;
+                }
+
+                if ($xSplit > 0 || $ySplit > 0) {
+                    $freeze = [
+                        'xSplit' => $xSplit,
+                        'ySplit' => $ySplit,
+                        'startRow' => $startRow,
+                        'startColumn' => $startColumn,
+                    ];
+                }
+            }
+        }
+
+        // Tab Color
+        $tabColor = null;
+        if (preg_match('/<tabColor\s+[^>]*rgb="([A-Fa-f0-9]{6,8})"/i', $sheetXml, $tcMatches)) {
+            $tabColor = '#' . substr($tcMatches[1], -6);
+        }
+
+        // Gridlines
+        $showGridlines = 1;
+        if (preg_match('/<sheetView[^>]*showGridLines="0"/i', $sheetXml)) {
+            $showGridlines = 0;
+        }
+
+        // Zoom Scale
+        $zoomRatio = 1.0;
+        if (preg_match('/<sheetView[^>]*zoomScale="(\d+)"/i', $sheetXml, $zm)) {
+            $zoomRatio = ((float)$zm[1]) / 100;
+        }
+
+        // AutoFilter
+        $autoFilter = null;
+        if (preg_match('/<autoFilter\s+ref="([^"]+)"/i', $sheetXml, $afm)) {
+            $autoFilter = $afm[1];
+        }
+
+        // Data Validations
+        $dataValidations = [];
+        if (preg_match('/<dataValidations[^>]*>(.*?)<\/dataValidations>/s', $sheetXml, $dvSection)) {
+            if (preg_match_all('/<dataValidation\s+([^>]+?)(?:\/>|>(.*?)<\/dataValidation>)/s', $dvSection[1], $dvm, PREG_SET_ORDER)) {
+                foreach ($dvm as $dv) {
+                    $attrs = $dv[1];
+                    $inner = $dv[2] ?? '';
+                    $type = preg_match('/type="([^"]+)"/i', $attrs, $m) ? $m[1] : 'list';
+                    $sqref = preg_match('/sqref="([^"]+)"/i', $attrs, $m) ? $m[1] : '';
+                    $formula1 = preg_match('/<formula1>(.*?)<\/formula1>/s', $inner, $m) ? $m[1] : '';
+                    $dataValidations[] = [
+                        'type' => $type,
+                        'sqref' => $sqref,
+                        'formula1' => $formula1,
+                    ];
+                }
+            }
+        }
+
         return [
             'cols' => $cols,
             'merges' => $merges,
+            'freeze' => $freeze,
+            'tabColor' => $tabColor,
+            'showGridlines' => $showGridlines,
+            'zoomRatio' => $zoomRatio,
+            'autoFilter' => $autoFilter,
+            'dataValidations' => $dataValidations,
         ];
     }
 

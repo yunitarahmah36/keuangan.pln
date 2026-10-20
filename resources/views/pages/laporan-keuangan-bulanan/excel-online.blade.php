@@ -164,11 +164,11 @@
                         <button type="button"
                                 class="univer-custom-tab-item px-3.5 py-1.5 text-xs rounded-lg transition-all flex items-center gap-1.5 cursor-pointer border {{ $isActive ? 'active bg-[#107C41] text-white border-[#107C41] font-extrabold shadow-sm' : 'bg-white text-[#4B2E21] hover:bg-[#FAF8F4] hover:text-[#107C41] border-[#D4D4D4] hover:border-[#107C41]/40 font-semibold shadow-2xs' }}"
                                 data-sheet-name="{{ $sName }}">
-                            <svg class="w-3.5 h-3.5 flex-shrink-0 {{ $isActive ? 'text-white' : 'text-[#8E7467]' }}" viewBox="0 0 24 24" fill="currentColor">
+                            <svg class="tab-icon w-3.5 h-3.5 flex-shrink-0 {{ $isActive ? 'text-white' : 'text-[#8E7467]' }}" viewBox="0 0 24 24" fill="currentColor">
                                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
                                 <polyline points="14 2 14 8 20 8" fill="{{ $isActive ? '#0E6835' : '#FAF8F4' }}"></polyline>
                             </svg>
-                            <span class="truncate max-w-[180px]">{{ $sName }}</span>
+                            <span class="tab-title truncate max-w-[180px]">{{ $sName }}</span>
                         </button>
                     @endforeach
                 </div>
