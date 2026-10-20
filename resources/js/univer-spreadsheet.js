@@ -273,8 +273,25 @@ export function initUniverSpreadsheet() {
 
                 sheetsMap[sheetId] = sheetDef;
 
-                // Clone data sel awal untuk deteksi perubahan
-                initialSnapshots[sheetId] = JSON.parse(JSON.stringify(cellData));
+                // Catat snapshot nilai & rumus awal sel secara hemat memori (tanpa duplikasi objek style berat)
+                const initSheetSnap = {};
+                Object.keys(cellData).forEach((rKey) => {
+                    const r = parseInt(rKey, 10);
+                    const rowObj = cellData[r];
+                    if (!rowObj) return;
+                    initSheetSnap[r] = {};
+                    Object.keys(rowObj).forEach((cKey) => {
+                        const c = parseInt(cKey, 10);
+                        const cell = rowObj[c];
+                        if (cell) {
+                            initSheetSnap[r][c] = {
+                                v: cell.v,
+                                ...(cell.f ? { f: cell.f } : {})
+                            };
+                        }
+                    });
+                });
+                initialSnapshots[sheetId] = initSheetSnap;
             });
 
             // Sembunyikan loading overlay
@@ -381,9 +398,11 @@ export function initUniverSpreadsheet() {
             }
 
             // ========================================================
-            // FUNGSI CEK SEL YANG BERUBAH (DIFF SNAPSHOTS)
+            // FUNGSI CEK SEL YANG BERUBAH (OPTIMIZED DIFF SNAPSHOTS)
             // ========================================================
-            function getModifiedCells() {
+            const dirtySheetIds = new Set();
+
+            function getModifiedCells(targetSheetIds = null) {
                 const currentSnapshot = fWorkbook.save ? fWorkbook.save() : fWorkbook.getSnapshot();
                 const sheetsPayload = [];
                 let totalModified = 0;
@@ -392,8 +411,16 @@ export function initUniverSpreadsheet() {
                     return { sheetsPayload, totalModified };
                 }
 
-                Object.keys(currentSnapshot.sheets).forEach((sId) => {
+                // Optimasi performa: jika ada daftar sheet kotor, hanya periksa sheet tersebut (skip 28 sheet lain)
+                const allSheetIds = Object.keys(currentSnapshot.sheets);
+                const sheetIdList = (targetSheetIds && targetSheetIds.size > 0)
+                    ? allSheetIds.filter((id) => targetSheetIds.has(id))
+                    : allSheetIds;
+
+                sheetIdList.forEach((sId) => {
                     const sheetObj = currentSnapshot.sheets[sId];
+                    if (!sheetObj) return;
+
                     const sheetName = sheetObj.name || sheetsMap[sId]?.name || 'Sheet';
                     const currentCellData = sheetObj.cellData || {};
                     const initialCellData = initialSnapshots[sId] || {};
@@ -482,6 +509,15 @@ export function initUniverSpreadsheet() {
             let pendingSaveRequested = false;
             let autosaveTimer = null;
             let isReadyForAutosave = false;
+            let lastSavedTime = null;
+            const DEBOUNCE_DELAY_MS = 1500; // Debounce 1.5 detik setelah selesai mengedit
+
+            function formatTime(date = new Date()) {
+                const h = String(date.getHours()).padStart(2, '0');
+                const m = String(date.getMinutes()).padStart(2, '0');
+                const s = String(date.getSeconds()).padStart(2, '0');
+                return `${h}:${m}:${s}`;
+            }
 
             function setAutosaveStatus(state) {
                 if (autosaveSaved) autosaveSaved.classList.add('hidden');
@@ -490,8 +526,19 @@ export function initUniverSpreadsheet() {
 
                 if (state === 'saved') {
                     if (autosaveSaved) autosaveSaved.classList.remove('hidden');
+                    const timeLabel = lastSavedTime ? `Tersimpan ${lastSavedTime}` : 'Tersimpan';
+
+                    // Update label teks di badge atas
+                    if (autosaveSaved) {
+                        const textSpan = autosaveSaved.querySelector('.autosave-text');
+                        if (textSpan) {
+                            textSpan.textContent = timeLabel;
+                        }
+                    }
+
+                    // Update label teks di status bar bawah
                     if (unsavedBadge) {
-                        unsavedBadge.textContent = 'Tersimpan';
+                        unsavedBadge.textContent = timeLabel;
                         unsavedBadge.className = 'univer-unsaved-badge flex items-center gap-1 bg-black/15 px-2 py-0.5 rounded text-[10px] text-white/90';
                     }
                 } else if (state === 'saving') {
@@ -510,20 +557,27 @@ export function initUniverSpreadsheet() {
             }
 
             function executeSave(options = {}) {
+                // Jika sedang berlangsung proses simpan, catat adanya perubahan tertunda agar disimpan berurutan
                 if (isSaving) {
                     pendingSaveRequested = true;
                     return Promise.resolve();
                 }
 
-                const { sheetsPayload, totalModified } = getModifiedCells();
+                const targetSheetsToCheck = dirtySheetIds.size > 0 ? dirtySheetIds : null;
+                const { sheetsPayload, totalModified } = getModifiedCells(targetSheetsToCheck);
 
+                // Jangan mengirim request ke server jika tidak ada perubahan data nyata
                 if (totalModified === 0) {
+                    dirtySheetIds.clear();
                     setAutosaveStatus('saved');
                     return Promise.resolve();
                 }
 
                 isSaving = true;
                 setAutosaveStatus('saving');
+
+                // Salinan payload batch yang dikirim ke server
+                const payloadToSave = JSON.parse(JSON.stringify(sheetsPayload));
 
                 return fetch(`/laporan-keuangan-bulanan/${laporanId}/save-cells`, {
                     method: 'POST',
@@ -533,28 +587,57 @@ export function initUniverSpreadsheet() {
                         'Accept': 'application/json',
                     },
                     body: JSON.stringify({
-                        sheets: sheetsPayload,
+                        sheets: payloadToSave,
                     }),
                     keepalive: true,
                 })
-                .then((res) => res.json())
+                .then((res) => {
+                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                    return res.json();
+                })
                 .then((data) => {
                     if (data.success) {
-                        // Perbarui snapshot awal dengan snapshot terkini yang telah tersimpan
-                        const updatedSnapshot = fWorkbook.save ? fWorkbook.save() : fWorkbook.getSnapshot();
-                        if (updatedSnapshot && updatedSnapshot.sheets) {
-                            Object.keys(updatedSnapshot.sheets).forEach((sId) => {
-                                initialSnapshots[sId] = JSON.parse(JSON.stringify(updatedSnapshot.sheets[sId].cellData || {}));
-                            });
-                        }
+                        // Perbarui initialSnapshots HANYA untuk sel-sel yang berhasil disimpan dalam batch ini.
+                        // Perubahan baru yang dilakukan user saat fetch berlangsung tetap terjaga dan tidak hilang.
+                        payloadToSave.forEach((sheetItem) => {
+                            const sheetName = sheetItem.sheet;
+                            const targetSheetId = Object.keys(sheetsMap).find(
+                                (id) => (sheetsMap[id]?.name || '') === sheetName
+                            );
+                            if (targetSheetId && initialSnapshots[targetSheetId]) {
+                                (sheetItem.cells || []).forEach((cItem) => {
+                                    const match = cItem.ref.match(/^([A-Z]+)(\d+)$/);
+                                    if (match) {
+                                        const cIdx = colLetterToIndex(match[1]) - 1;
+                                        const rIdx = parseInt(match[2], 10) - 1;
+                                        initialSnapshots[targetSheetId][rIdx] = initialSnapshots[targetSheetId][rIdx] || {};
 
+                                        const hasVal = cItem.value !== '' && cItem.value !== null && cItem.value !== undefined;
+                                        const hasFormula = Boolean(cItem.formula);
+
+                                        if (!hasVal && !hasFormula) {
+                                            delete initialSnapshots[targetSheetId][rIdx][cIdx];
+                                        } else {
+                                            const updatedObj = { v: cItem.value };
+                                            if (cItem.formula) {
+                                                updatedObj.f = cItem.formula;
+                                            }
+                                            initialSnapshots[targetSheetId][rIdx][cIdx] = updatedObj;
+                                        }
+                                    }
+                                });
+                            }
+                        });
+
+                        dirtySheetIds.clear();
+                        lastSavedTime = formatTime();
                         isSaving = false;
 
-                        // Jika ada perubahan baru yang masuk selama proses penyimpanan
+                        // Periksa apakah ada perubahan baru yang masuk selama request sedang diproses
                         const remaining = getModifiedCells();
                         if (pendingSaveRequested || remaining.totalModified > 0) {
                             pendingSaveRequested = false;
-                            scheduleAutosave(300);
+                            scheduleAutosave(DEBOUNCE_DELAY_MS);
                         } else {
                             setAutosaveStatus('saved');
                         }
@@ -572,24 +655,24 @@ export function initUniverSpreadsheet() {
                 });
             }
 
-            function scheduleAutosave(delay = 1200) {
+            function scheduleAutosave(delay = DEBOUNCE_DELAY_MS) {
                 if (!isReadyForAutosave) return;
 
-                const { totalModified } = getModifiedCells();
-                if (totalModified === 0 && !isSaving) {
-                    setAutosaveStatus('saved');
+                // Jika sedang saving, tandai request tertunda dan tunggu batch saat ini selesai
+                if (isSaving) {
+                    pendingSaveRequested = true;
                     return;
                 }
 
-                if (!isSaving) {
-                    setAutosaveStatus('saving');
-                }
-
+                // Debounce ringan: reset timer sebelumnya jika pengguna masih melakukan perubahan
+                // (Tanpa komputasi diff sinkron yang membekukan input pengguna)
                 if (autosaveTimer) {
                     clearTimeout(autosaveTimer);
                 }
 
                 autosaveTimer = setTimeout(() => {
+                    autosaveTimer = null;
+                    // Eksekusi verifikasi dan simpan HANYA setelah pengguna selesai mengetik
                     executeSave();
                 }, delay);
             }
@@ -599,7 +682,8 @@ export function initUniverSpreadsheet() {
                     clearTimeout(autosaveTimer);
                     autosaveTimer = null;
                 }
-                const { totalModified } = getModifiedCells();
+                const targetSheetsToCheck = dirtySheetIds.size > 0 ? dirtySheetIds : null;
+                const { totalModified } = getModifiedCells(targetSheetsToCheck);
                 if (totalModified > 0) {
                     executeSave({ immediate: true });
                 }
@@ -614,37 +698,100 @@ export function initUniverSpreadsheet() {
                 });
             }
 
-            // Aktifkan autosave setelah workbook siap
+            // Aktifkan autosave hanya setelah workbook siap dimuat
             setTimeout(() => {
                 isReadyForAutosave = true;
                 setAutosaveStatus('saved');
             }, 600);
 
-            // Listener perubahan sel di Univer
+            // Pemeriksa apakah command merupakan mutasi data spreadsheet nyata (bukan seleksi/scroll/sheet switch)
+            function isSpreadsheetDataMutation(command) {
+                if (!command || !command.id) return false;
+
+                const cmdId = String(command.id);
+
+                // 1. Abaikan seluruh operasi UI, scroll, seleksi sel, zoom, dan pergantian tab sheet
+                if (command.type === 1 || cmdId.includes('.operation.')) {
+                    return false;
+                }
+
+                const ignoredCommandIds = [
+                    'sheet.operation.set-selections',
+                    'sheet.operation.scroll-to-cell',
+                    'sheet.operation.scroll',
+                    'sheet.operation.set-worksheet-active',
+                    'sheet.command.set-worksheet-activate',
+                    'sheet.operation.set-cell-edit-visible',
+                    'sheet.operation.set-zoom-ratio',
+                    'sheet.mutation.set-formula-calculation-notification',
+                    'sheet.mutation.set-worksheet-row-auto-height'
+                ];
+                if (ignoredCommandIds.includes(cmdId)) {
+                    return false;
+                }
+
+                // 2. Deteksi mutasi nilai sel, rumus, autofill, paste, dan manipulasi baris/kolom
+                if (
+                    cmdId === 'sheet.mutation.set-range-values' ||
+                    cmdId === 'sheet.command.set-range-values' ||
+                    cmdId.includes('set-range-values') ||
+                    cmdId.includes('clear-selection') ||
+                    cmdId.includes('insert-row') ||
+                    cmdId.includes('remove-row') ||
+                    cmdId.includes('insert-col') ||
+                    cmdId.includes('remove-col') ||
+                    cmdId.includes('move-range') ||
+                    cmdId.includes('add-worksheet-merge') ||
+                    cmdId.includes('remove-worksheet-merge') ||
+                    (command.type === 2 && cmdId.startsWith('sheet.mutation.'))
+                ) {
+                    return true;
+                }
+
+                return false;
+            }
+
+            // Listener mutasi perubahan data di Univer (Non-blocking & Zero-lag saat mengetik)
             try {
-                fWorkbook.onCommandExecuted(() => {
-                    if (isReadyForAutosave) {
-                        scheduleAutosave(1200);
+                fWorkbook.onCommandExecuted((command) => {
+                    if (!isReadyForAutosave) return;
+
+                    // Abaikan jika bukan mutasi data nyata
+                    if (!isSpreadsheetDataMutation(command)) {
+                        return;
                     }
+
+                    // Catat sheet mana yang mengalami perubahan agar pengecekan diff nanti hanya pada sheet ini
+                    const targetSubUnitId = command.params?.subUnitId;
+                    if (targetSubUnitId) {
+                        dirtySheetIds.add(targetSubUnitId);
+                    }
+
+                    // Jadwalkan debounce tanpa blocking per-keystroke
+                    scheduleAutosave(DEBOUNCE_DELAY_MS);
                 });
             } catch (e) {
                 console.warn('onCommandExecuted listener setup:', e);
             }
 
-            // Listener focusout / keydown pada canvas editor sel
-            mountPoint.addEventListener('focusout', () => {
-                if (isReadyForAutosave) {
-                    scheduleAutosave(350);
-                }
-            }, true);
+            // Listener event SheetEditEnded via Facade Univer saat pengguna selesai mengedit sel
+            try {
+                if (univerAPI && univerAPI.Event && univerAPI.Event.SheetEditEnded) {
+                    univerAPI.addEvent(univerAPI.Event.SheetEditEnded, (event) => {
+                        if (!isReadyForAutosave) return;
 
-            mountPoint.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter' || e.key === 'Tab') {
-                    if (isReadyForAutosave) {
-                        scheduleAutosave(400);
-                    }
+                        if (event?.worksheet) {
+                            const sId = event.worksheet.getSheetId ? event.worksheet.getSheetId() : null;
+                            if (sId) dirtySheetIds.add(sId);
+                        }
+
+                        scheduleAutosave(DEBOUNCE_DELAY_MS);
+                    });
                 }
-            }, true);
+            } catch (e) {
+                console.debug('SheetEditEnded listener optional:', e);
+            }
+
 
             // ========================================================
             // FUNGSI TAMPILAN TAB SHEET & INDIKATOR TAB AKTIF

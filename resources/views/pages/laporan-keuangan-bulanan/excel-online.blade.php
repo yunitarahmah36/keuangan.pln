@@ -67,28 +67,14 @@
                         </h2>
                     </div>
                     <div class="text-[11px] text-white/80 flex items-center gap-2">
-                        <span>Excel Online &bull; {{ $laporan->periode_formatted }}</span>
-                        <span class="hidden sm:inline">&bull; Kelompok: <strong class="text-white" id="header-kelompok-label">{{ $activeKelompok }}</strong></span>
+                        <span>{{ $laporan->periode_formatted }}</span>
+                        <span class="hidden sm:inline">&bull; <strong class="text-white" id="header-kelompok-label">{{ $activeKelompok }}</strong></span>
                     </div>
                 </div>
             </div>
 
             <!-- Right Controls: Tombol Simpan & Actions -->
             <div class="flex items-center gap-2 flex-shrink-0">
-                <!-- Tombol Unduh .XLSX Asli -->
-                @if ($laporan->path_file)
-                    <a href="{{ Route::has('laporan-keuangan.download') ? route('laporan-keuangan.download', $laporan->id) : asset('storage/' . $laporan->path_file) }}"
-                       id="btn-download-xlsx"
-                       class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/15 hover:bg-white/25 text-white text-xs font-bold shadow-2xs transition-all active:scale-95 cursor-pointer"
-                       title="Unduh File Excel Asli (.xlsx)">
-                        <svg class="w-4 h-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                            <polyline points="7 10 12 15 17 10"></polyline>
-                            <line x1="12" y1="15" x2="12" y2="3"></line>
-                        </svg>
-                        <span class="hidden sm:inline">Unduh .XLSX</span>
-                    </a>
-                @endif
 
                 <!-- Indikator Status Autosave Otomatis -->
                 <div id="autosave-status-container" class="autosave-status-container inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-black/25 text-xs font-semibold select-none border border-white/10 shadow-2xs" title="Status penyimpanan otomatis">
@@ -150,12 +136,6 @@
                     <span id="group-tabs-kelompok-badge">{{ $activeKelompok }}</span>
                 </div>
 
-                <!-- Panah Geser Tab -->
-                <div class="flex items-center text-[#605E5C] pr-1.5 border-r border-[#D4D4D4] flex-shrink-0">
-                    <button type="button" id="btn-scroll-group-tabs-left" class="p-1 hover:bg-[#EDEBE9] rounded cursor-pointer text-xs" title="Geser Tab ke Kiri">◀</button>
-                    <button type="button" id="btn-scroll-group-tabs-right" class="p-1 hover:bg-[#EDEBE9] rounded cursor-pointer text-xs" title="Geser Tab ke Kanan">▶</button>
-                </div>
-
                 <!-- Container Tab Sheet untuk Kelompok yang Dipilih Saja -->
                 <div class="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 flex-1 min-w-0" id="group-sheet-tabs-list">
                     @php $sheetsInActive = $kelompokSheet[$activeKelompok] ?? [$activeSheet]; @endphp
@@ -208,7 +188,6 @@
         <div class="bg-[#107C41] text-white px-4 py-1.5 flex items-center justify-between text-[11px] font-medium select-none border-t border-[#0E6835]">
             <div class="flex items-center gap-4">
                 <span class="font-bold tracking-wider" id="excel-ready-badge">SIAP</span>
-                <span class="text-white/80 hidden sm:inline">&bull; Terhubung ke Seluruh Sheet Workbook Asli</span>
                 <span class="text-white/80 hidden md:inline">&bull; Dukungan Rumus Lengkap Univer Engine</span>
             </div>
 
