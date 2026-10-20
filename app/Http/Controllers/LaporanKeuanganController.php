@@ -69,71 +69,50 @@ class LaporanKeuanganController extends Controller
         $path = null;
 
         try {
-            // Baca metadata workbook tanpa memuat semua isi sheet.
-            $zip = new ZipArchive();
+            $excelService = new \App\Services\ExcelWorkbookService();
 
-            if ($zip->open($file->getRealPath()) !== true) {
-                throw new \RuntimeException(
-                    'File Excel tidak dapat dibuka.'
-                );
-            }
+            // 1. Validasi struktur file Excel (nama sheet, header kolom, dan struktur data)
+            $validation = $excelService->validateWorkbookStructure($file->getRealPath());
 
-            try {
-                $workbookXml = $zip->getFromName('xl/workbook.xml');
+            if (!$validation['valid']) {
+                // Catat kegagalan ke riwayat import dengan pesan spesifik
+                ImportHistory::create([
+                    'laporan_keuangan_id' => null,
+                    'nama_file' => $namaFile,
+                    'status' => 'Gagal',
+                    'pesan' => $validation['message'],
+                    'waktu_import' => now(),
+                ]);
 
-                if ($workbookXml === false) {
-                    throw new \RuntimeException(
-                        'Struktur workbook XLSX tidak ditemukan.'
-                    );
+                if ($request->expectsJson() || $request->ajax()) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => $validation['message'],
+                    ], 422);
                 }
 
-                $dom = new DOMDocument();
-
-                if (!$dom->loadXML($workbookXml, LIBXML_NONET)) {
-                    throw new \RuntimeException(
-                        'Struktur workbook XLSX tidak valid.'
-                    );
-                }
-
-                $xpath = new DOMXPath($dom);
-                $sheetNodes = $xpath->query(
-                    '//*[local-name()="sheets"]/*[local-name()="sheet"]'
-                );
-
-                $sheets = [];
-
-                foreach ($sheetNodes as $sheetNode) {
-                    $sheets[] = [
-                        'nama' => $sheetNode->getAttribute('name'),
-                    ];
-                }
-            } finally {
-                $zip->close();
+                return redirect()
+                    ->route('laporan-keuangan.index')
+                    ->withErrors([
+                        'file' => $validation['message'],
+                    ]);
             }
 
-            $jumlahSheet = count($sheets);
+            $sheetNames = $validation['sheets'];
+            $sheetMapping = $validation['categories'];
+            $jumlahSheet = count($sheetNames);
+            $sheets = array_map(fn($name) => ['nama' => $name], $sheetNames);
 
-            if ($jumlahSheet === 0) {
-                throw new \RuntimeException(
-                    'Workbook tidak memiliki sheet.'
-                );
-            }
-
-            // Simpan file Excel asli.
+            // 2. Simpan file Excel asli ke storage
             $path = $file->store('laporan-keuangan', 'public');
 
             if (!$path) {
                 throw new \RuntimeException(
-                    'File Excel gagal disimpan.'
+                    'File Excel gagal disimpan ke penyimpanan server.'
                 );
             }
 
-            // Tentukan pengelompokan sheet secara dinamis
-            $excelService = new \App\Services\ExcelWorkbookService();
-            $sheetNames = array_map(fn($s) => $s['nama'], $sheets);
-            $sheetMapping = $excelService->categorizeSheets($sheetNames);
-
-            // Simpan laporan dan riwayat dalam satu transaksi.
+            // 3. Simpan laporan dan riwayat dalam satu transaksi database
             $laporan = DB::transaction(function () use (
                 $validated,
                 $namaFile,
@@ -192,17 +171,28 @@ class LaporanKeuanganController extends Controller
                 Storage::disk('public')->delete($path);
             }
 
+            $errorMessage = $e->getMessage() ?: 'Import gagal. Periksa format dan isi file Excel.';
+
+            // Catat kegagalan ke riwayat import jika belum tercatat
+            ImportHistory::create([
+                'laporan_keuangan_id' => null,
+                'nama_file' => $namaFile,
+                'status' => 'Gagal',
+                'pesan' => $errorMessage,
+                'waktu_import' => now(),
+            ]);
+
             if ($request->expectsJson() || $request->ajax()) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Import gagal. Periksa log Laravel untuk detail kesalahan.',
+                    'message' => $errorMessage,
                 ], 422);
             }
 
             return redirect()
                 ->route('laporan-keuangan.index')
                 ->withErrors([
-                    'file' => 'Import gagal. Periksa format dan isi file Excel.',
+                    'file' => $errorMessage,
                 ]);
         }
     }

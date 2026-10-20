@@ -250,6 +250,11 @@ if (alert) {
                 error.message || 'Terjadi kesalahan saat mengimpor Excel.'
             );
 
+            try {
+                await refreshHistory();
+            } catch (historyError) {
+                // Ignore history refresh error
+            }
         } finally {
             isImporting = false;
             btnSubmit.disabled = false;

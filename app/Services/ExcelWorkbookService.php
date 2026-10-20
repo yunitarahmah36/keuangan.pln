@@ -153,6 +153,152 @@ class ExcelWorkbookService
     }
 
     /**
+     * Memeriksa dan memvalidasi apakah struktur file Excel (.xlsx) sesuai dengan
+     * format laporan keuangan yang didukung (nama sheet, header kolom, dan struktur data).
+     */
+    public function validateWorkbookStructure(string $filePath): array
+    {
+        if (!file_exists($filePath)) {
+            return [
+                'valid' => false,
+                'message' => 'File Excel tidak ditemukan pada server.',
+            ];
+        }
+
+        try {
+            $sheets = $this->getSheetList($filePath);
+        } catch (\Throwable $e) {
+            return [
+                'valid' => false,
+                'message' => 'File Excel tidak dapat dibaca atau format file rusak: ' . $e->getMessage(),
+            ];
+        }
+
+        if (empty($sheets)) {
+            return [
+                'valid' => false,
+                'message' => 'Struktur file Excel tidak valid: workbook tidak memiliki worksheet.',
+            ];
+        }
+
+        $sheetNames = array_column($sheets, 'name');
+
+        // 1. Validasi Nama Sheet: Kategorikan sheet berdasarkan aturan sistem
+        $categorized = $this->categorizeSheets($sheetNames);
+
+        $hasLaporanUtama = !empty($categorized['Laporan Utama']);
+        $hasBukuBesar = !empty($categorized['Buku Besar']);
+
+        // File wajib memiliki minimal sheet Laporan Utama atau Buku Besar
+        if (!$hasLaporanUtama && !$hasBukuBesar) {
+            $preview = implode(', ', array_slice($sheetNames, 0, 5));
+            if (count($sheetNames) > 5) {
+                $preview .= ', ...';
+            }
+            return [
+                'valid' => false,
+                'message' => "Struktur file tidak sesuai format laporan keuangan yang didukung. File wajib memuat sheet laporan keuangan utama (seperti NERACA, INCOME, LabaRugi, CashFlow, atau Buku Besar). Sheet yang terdeteksi: [{$preview}].",
+            ];
+        }
+
+        // 2. Validasi Header Kolom dan Struktur Data pada sheet utama
+        $sheetsToCheck = [];
+        if ($hasLaporanUtama) {
+            $sheetsToCheck = array_merge($sheetsToCheck, $categorized['Laporan Utama']);
+        }
+        if ($hasBukuBesar) {
+            $sheetsToCheck = array_merge($sheetsToCheck, $categorized['Buku Besar']);
+        }
+
+        $checkedAtLeastOne = false;
+        $errors = [];
+
+        foreach ($sheetsToCheck as $sheetName) {
+            try {
+                $sheetData = $this->readSheetData($filePath, $sheetName, 25);
+                $rows = $sheetData['rows'] ?? [];
+
+                if (empty($rows)) {
+                    $errors[] = "Sheet '{$sheetName}' kosong tanpa baris data.";
+                    continue;
+                }
+
+                $allTexts = [];
+                $hasNumericData = false;
+
+                foreach ($rows as $r) {
+                    foreach ($r['cells'] as $cell) {
+                        $val = trim((string)($cell['val'] ?? ''));
+                        if ($val !== '') {
+                            $allTexts[] = strtolower($val);
+                            if (is_numeric(str_replace([',', '.', ' '], '', $val)) || !empty($cell['formula'])) {
+                                $hasNumericData = true;
+                            }
+                        }
+                    }
+                }
+
+                $combinedText = implode(' ', $allTexts);
+
+                // Validasi Header Kolom & Pos Berdasarkan Tipe Sheet
+                if (preg_match('/bukubesar|buku\s*besar|general\s*ledger|^gl/i', $sheetName)) {
+                    $hasKodeAkun = preg_match('/kode\s*akun|kode|no\.\s*rek|no\s*akun/i', $combinedText);
+                    $hasKeterangan = preg_match('/keterangan|uraian|nama\s*akun/i', $combinedText);
+
+                    if (!$hasKodeAkun || !$hasKeterangan) {
+                        $errors[] = "Sheet '{$sheetName}' tidak memuat header kolom standar Buku Besar (Kode Akun dan Keterangan).";
+                        continue;
+                    }
+                } elseif (preg_match('/^neraca|posisi\s*keuangan/i', $sheetName)) {
+                    $hasNeracaKeywords = preg_match('/aset|aktiva|kewajiban|liabilitas|ekuitas|modal|laporan\s*posisi\s*keuangan/i', $combinedText);
+                    if (!$hasNeracaKeywords) {
+                        $errors[] = "Sheet '{$sheetName}' tidak memuat struktur pos Neraca / Posisi Keuangan (Aset/Kewajiban/Ekuitas).";
+                        continue;
+                    }
+                } elseif (preg_match('/^income|labarugi|laba\s*rugi/i', $sheetName)) {
+                    $hasIncomeKeywords = preg_match('/pendapatan|beban|biaya|laba|rugi|revenue|operating/i', $combinedText);
+                    if (!$hasIncomeKeywords) {
+                        $errors[] = "Sheet '{$sheetName}' tidak memuat struktur pos Laba Rugi / Income (Pendapatan/Beban/Laba).";
+                        continue;
+                    }
+                } elseif (preg_match('/cashflow|cash\s*flow|arus\s*kas/i', $sheetName)) {
+                    $hasCashFlowKeywords = preg_match('/arus\s*kas|kas|operasi|investasi|pendanaan|cash\s*flow/i', $combinedText);
+                    if (!$hasCashFlowKeywords) {
+                        $errors[] = "Sheet '{$sheetName}' tidak memuat struktur pos Laporan Arus Kas (Cash Flow).";
+                        continue;
+                    }
+                }
+
+                // Validasi Struktur Data Keuangan (harus ada sel numerik/formula)
+                if (!$hasNumericData) {
+                    $errors[] = "Sheet '{$sheetName}' tidak memuat data nilai angka atau transaksi laporan keuangan.";
+                    continue;
+                }
+
+                $checkedAtLeastOne = true;
+                break; // Minimal satu sheet laporan utama terverifikasi valid dan berstruktur benar
+            } catch (\Throwable $e) {
+                $errors[] = "Gagal memverifikasi sheet '{$sheetName}': " . $e->getMessage();
+            }
+        }
+
+        if (!$checkedAtLeastOne) {
+            $detailError = !empty($errors) ? implode(' ', $errors) : 'Struktur header kolom dan data tidak sesuai format laporan keuangan.';
+            return [
+                'valid' => false,
+                'message' => "Validasi struktur file gagal. {$detailError}",
+            ];
+        }
+
+        return [
+            'valid' => true,
+            'message' => 'Struktur file sesuai dengan format laporan keuangan yang didukung.',
+            'sheets' => $sheetNames,
+            'categories' => $categorized,
+        ];
+    }
+
+    /**
      * Membaca isi suatu sheet secara cepat dari .xlsx.
      */
     public function readSheetData(string $filePath, string $sheetName, int $maxRows = 150): array
