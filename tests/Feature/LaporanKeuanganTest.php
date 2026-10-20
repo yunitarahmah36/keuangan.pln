@@ -432,6 +432,168 @@ class LaporanKeuanganTest extends TestCase
 
         if (file_exists($testPath)) unlink($testPath);
     }
+
+    public function test_detail_page_renders_export_excel_button_and_modal(): void
+    {
+        $laporan = LaporanKeuangan::create([
+            'nama_laporan' => 'Laporan Keuangan Bulanan',
+            'bulan' => 10,
+            'tahun' => 2026,
+            'nama_file' => 'Laporan_Test_Okt2026.xlsx',
+            'status' => 'Berhasil',
+        ]);
+
+        $response = $this->get("/laporan-keuangan-bulanan/{$laporan->id}/detail");
+
+        $response->assertStatus(200);
+        $response->assertSee('btn-open-export-modal');
+        $response->assertSee('Export Excel');
+        $response->assertSee('modal-export-excel');
+        $response->assertSee('Pilih Semua');
+        $response->assertSee('Batalkan Semua');
+        $response->assertSee('Laporan Utama');
+        $response->assertSee('NERACA');
+    }
+
+    public function test_can_export_all_sheets_to_excel_file(): void
+    {
+        $storageDir = storage_path('app/public/laporan-keuangan');
+        if (!is_dir($storageDir)) {
+            mkdir($storageDir, 0755, true);
+        }
+
+        $filename = 'test_export_all_' . uniqid() . '.xlsx';
+        $fullPath = $storageDir . '/' . $filename;
+
+        $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+        $spreadsheet->getActiveSheet()->setTitle('NERACA');
+        $sheet2 = $spreadsheet->createSheet();
+        $sheet2->setTitle('INCOME');
+        $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
+        $writer->save($fullPath);
+
+        $laporan = LaporanKeuangan::create([
+            'nama_laporan' => 'Laporan Keuangan Bulanan',
+            'bulan' => 10,
+            'tahun' => 2026,
+            'nama_file' => 'Laporan_Okt_2026.xlsx',
+            'path_file' => 'laporan-keuangan/' . $filename,
+            'status' => 'Berhasil',
+        ]);
+
+        $response = $this->postJson("/laporan-keuangan-bulanan/{$laporan->id}/export-excel", [
+            'mode' => 'all',
+        ]);
+
+        $response->assertStatus(200);
+        $this->assertEquals(
+            'attachment; filename=Laporan_Keuangan_Bulanan_Oktober_2026.xlsx',
+            $response->headers->get('Content-Disposition')
+        );
+
+        if (file_exists($fullPath)) {
+            @unlink($fullPath);
+        }
+    }
+
+    public function test_can_export_filtered_sheets_to_excel_file(): void
+    {
+        $storageDir = storage_path('app/public/laporan-keuangan');
+        if (!is_dir($storageDir)) {
+            mkdir($storageDir, 0755, true);
+        }
+
+        $filename = 'test_export_filtered_' . uniqid() . '.xlsx';
+        $fullPath = $storageDir . '/' . $filename;
+
+        $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+        $spreadsheet->getActiveSheet()->setTitle('NERACA');
+        $sheet2 = $spreadsheet->createSheet();
+        $sheet2->setTitle('INCOME');
+        $sheet3 = $spreadsheet->createSheet();
+        $sheet3->setTitle('CashFlow');
+        $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
+        $writer->save($fullPath);
+
+        $laporan = LaporanKeuangan::create([
+            'nama_laporan' => 'Laporan Keuangan Bulanan',
+            'bulan' => 10,
+            'tahun' => 2026,
+            'nama_file' => 'Laporan_Okt_2026.xlsx',
+            'path_file' => 'laporan-keuangan/' . $filename,
+            'status' => 'Berhasil',
+        ]);
+
+        // Ekspor hanya NERACA dan CashFlow (filter subset sheet)
+        $response = $this->postJson("/laporan-keuangan-bulanan/{$laporan->id}/export-excel", [
+            'mode' => 'sheet',
+            'sheets' => ['NERACA', 'CashFlow', 'NERACA'], // uji juga penanganan deduplikasi
+        ]);
+
+        $response->assertStatus(200);
+        $this->assertEquals(
+            'attachment; filename=Laporan_Keuangan_Bulanan_Oktober_2026.xlsx',
+            $response->headers->get('Content-Disposition')
+        );
+
+        $downloadedFile = $response->getFile()->getPathname();
+        $this->assertFileExists($downloadedFile);
+
+        $service = new \App\Services\ExcelWorkbookService();
+        $extractedSheets = $service->getSheetList($downloadedFile);
+        $extractedSheetNames = array_column($extractedSheets, 'name');
+
+        $this->assertCount(2, $extractedSheetNames);
+        $this->assertEquals(['NERACA', 'CashFlow'], $extractedSheetNames);
+
+        if (file_exists($fullPath)) {
+            @unlink($fullPath);
+        }
+        if (file_exists($downloadedFile)) {
+            @unlink($downloadedFile);
+        }
+    }
+
+    public function test_export_validation_fails_when_no_sheets_selected(): void
+    {
+        $storageDir = storage_path('app/public/laporan-keuangan');
+        if (!is_dir($storageDir)) {
+            mkdir($storageDir, 0755, true);
+        }
+
+        $filename = 'test_export_empty_' . uniqid() . '.xlsx';
+        $fullPath = $storageDir . '/' . $filename;
+
+        $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+        $spreadsheet->getActiveSheet()->setTitle('NERACA');
+        $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
+        $writer->save($fullPath);
+
+        $laporan = LaporanKeuangan::create([
+            'nama_laporan' => 'Laporan Keuangan Bulanan',
+            'bulan' => 10,
+            'tahun' => 2026,
+            'nama_file' => 'Laporan_Okt_2026.xlsx',
+            'path_file' => 'laporan-keuangan/' . $filename,
+            'status' => 'Berhasil',
+        ]);
+
+        // Kirim request tanpa sheet apapun
+        $response = $this->postJson("/laporan-keuangan-bulanan/{$laporan->id}/export-excel", [
+            'mode' => 'sheet',
+            'sheets' => [],
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJson([
+            'success' => false,
+            'message' => 'Silakan pilih minimal satu sheet atau kelompok laporan untuk diekspor.',
+        ]);
+
+        if (file_exists($fullPath)) {
+            @unlink($fullPath);
+        }
+    }
 }
 
 

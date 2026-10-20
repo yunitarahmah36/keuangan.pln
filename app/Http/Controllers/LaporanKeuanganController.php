@@ -443,6 +443,114 @@ class LaporanKeuanganController extends Controller
     }
 
     /**
+     * Ekspor file Excel dengan filter sheet / kelompok laporan ke dalam satu file .xlsx.
+     */
+    public function exportExcel(Request $request, int $id)
+    {
+        $laporan = LaporanKeuangan::find($id);
+        if (!$laporan) {
+            $history = ImportHistory::find($id);
+            if ($history && $history->laporan_keuangan_id) {
+                $laporan = LaporanKeuangan::find($history->laporan_keuangan_id);
+            }
+        }
+
+        if (!$laporan) {
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json(['success' => false, 'message' => 'Data laporan tidak ditemukan.'], 404);
+            }
+            abort(404, 'Data laporan tidak ditemukan.');
+        }
+
+        $fullPath = storage_path('app/public/' . $laporan->path_file);
+        if (!file_exists($fullPath)) {
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json(['success' => false, 'message' => 'File Excel fisik laporan tidak ditemukan.'], 404);
+            }
+            abort(404, 'File Excel fisik laporan tidak ditemukan.');
+        }
+
+        $excelService = new \App\Services\ExcelWorkbookService();
+        $allSheetsInfo = $excelService->getSheetList($fullPath);
+        $allSheetNames = array_column($allSheetsInfo, 'name');
+
+        $mode = $request->input('mode', 'all'); // 'all', 'kelompok', 'sheet'
+        $selectedSheets = [];
+
+        if ($mode === 'all') {
+            $selectedSheets = $allSheetNames;
+        } else {
+            // Kumpulkan sheet dari kelompok yang dipilih
+            $kelompokSheet = $this->getWorkbookKelompok($laporan);
+            $selectedKelompok = $request->input('kelompok', []);
+            if (!is_array($selectedKelompok)) {
+                $selectedKelompok = !empty($selectedKelompok) ? [$selectedKelompok] : [];
+            }
+
+            foreach ($selectedKelompok as $kName) {
+                if (isset($kelompokSheet[$kName]) && is_array($kelompokSheet[$kName])) {
+                    foreach ($kelompokSheet[$kName] as $s) {
+                        $selectedSheets[] = $s;
+                    }
+                }
+            }
+
+            // Kumpulkan sheet individual
+            $explicitSheets = $request->input('sheets', []);
+            if (!is_array($explicitSheets)) {
+                $explicitSheets = !empty($explicitSheets) ? [$explicitSheets] : [];
+            }
+            foreach ($explicitSheets as $s) {
+                $selectedSheets[] = $s;
+            }
+        }
+
+        // Cegah duplikasi sheet dengan array_unique
+        $selectedSheets = array_values(array_unique(array_filter(array_map('trim', $selectedSheets))));
+
+        // Validasi: jika tidak ada sheet yang dipilih
+        if (empty($selectedSheets)) {
+            $errMsg = 'Silakan pilih minimal satu sheet atau kelompok laporan untuk diekspor.';
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $errMsg,
+                ], 422);
+            }
+            return back()->withErrors(['export' => $errMsg]);
+        }
+
+        // Nama bulan dalam bahasa Indonesia
+        $namaBulan = [
+            1 => 'Januari', 2 => 'Februari', 3 => 'Maret', 4 => 'April',
+            5 => 'Mei', 6 => 'Juni', 7 => 'Juli', 8 => 'Agustus',
+            9 => 'September', 10 => 'Oktober', 11 => 'November', 12 => 'Desember',
+        ];
+
+        $bulanStr = $namaBulan[(int)$laporan->bulan] ?? ('Bulan_' . $laporan->bulan);
+        $tahunStr = $laporan->tahun ?? date('Y');
+        $finalFilename = "Laporan_Keuangan_Bulanan_{$bulanStr}_{$tahunStr}.xlsx";
+
+        try {
+            $tempExportPath = $excelService->exportFilteredSheets($fullPath, $selectedSheets);
+
+            return response()->download($tempExportPath, $finalFilename, [
+                'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                'Cache-Control' => 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0',
+                'Pragma' => 'no-cache',
+            ])->deleteFileAfterSend(true);
+        } catch (\Throwable $e) {
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Gagal memproses ekspor Excel: ' . $e->getMessage(),
+                ], 500);
+            }
+            return back()->withErrors(['export' => 'Gagal memproses ekspor Excel: ' . $e->getMessage()]);
+        }
+    }
+
+    /**
      * API untuk menyimpan perubahan sel dan rumus ke workbook asli.
      */
     public function saveCells(Request $request, int $id): JsonResponse

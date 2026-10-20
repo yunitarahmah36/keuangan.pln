@@ -27,6 +27,12 @@ Route::get(
     [LaporanKeuanganController::class, 'download']
 )->name('laporan-keuangan.download');
 
+Route::match(
+    ['GET', 'POST'],
+    '/laporan-keuangan-bulanan/{id}/export-excel',
+    [LaporanKeuanganController::class, 'exportExcel']
+)->name('laporan-keuangan.export-excel');
+
 Route::get(
     '/laporan-keuangan-bulanan/{id}/sheet-data',
     [LaporanKeuanganController::class, 'sheetData']

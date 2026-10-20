@@ -1428,4 +1428,190 @@ class ExcelWorkbookService
         }
         return $letter;
     }
+
+    /**
+     * Ekspor workbook Excel dengan filter sheet tertentu ke dalam satu file .xlsx.
+     * Mempertahankan nama sheet, urutan sheet asli, format angka, rumus, dan styling.
+     *
+     * @param string $sourcePath Path file workbook asli
+     * @param array $selectedSheets Daftar nama sheet yang dipilih
+     * @param string|null $outputFilePath Path tujuan file hasil ekspor (opsional)
+     * @return string Path file hasil ekspor
+     */
+    public function exportFilteredSheets(string $sourcePath, array $selectedSheets, ?string $outputFilePath = null): string
+    {
+        if (!file_exists($sourcePath)) {
+            throw new RuntimeException("File workbook asli tidak ditemukan: {$sourcePath}");
+        }
+
+        $allSheets = $this->getSheetList($sourcePath);
+        if (empty($allSheets)) {
+            throw new RuntimeException("Workbook tidak memiliki sheet yang valid.");
+        }
+
+        // Deduplikasi dan bersihkan input sheet
+        $cleanedSelected = array_values(array_unique(array_filter(array_map('trim', $selectedSheets))));
+        if (empty($cleanedSelected)) {
+            throw new \InvalidArgumentException("Pilih minimal satu sheet untuk diekspor.");
+        }
+
+        // Cocokkan sheet yang dipilih dengan sheet di workbook dengan tetap menjaga urutan asli
+        $sheetsToKeep = [];
+        foreach ($allSheets as $sheetInfo) {
+            $sheetName = $sheetInfo['name'];
+            foreach ($cleanedSelected as $sel) {
+                if (strcasecmp($sheetName, $sel) === 0) {
+                    $sheetsToKeep[] = $sheetName;
+                    break;
+                }
+            }
+        }
+
+        if (empty($sheetsToKeep)) {
+            throw new \InvalidArgumentException("Tidak ada sheet yang dipilih yang cocok dengan lembar kerja pada workbook.");
+        }
+
+        if (!$outputFilePath) {
+            $tempDir = storage_path('app/temp');
+            if (!is_dir($tempDir)) {
+                @mkdir($tempDir, 0755, true);
+            }
+            $outputFilePath = $tempDir . DIRECTORY_SEPARATOR . 'export_' . uniqid() . '.xlsx';
+        }
+
+        // Jika seluruh sheet dipilih, cukup salin file asli
+        if (count($sheetsToKeep) === count($allSheets)) {
+            if (!copy($sourcePath, $outputFilePath)) {
+                throw new RuntimeException("Gagal menduplikasi file workbook asli.");
+            }
+            return $outputFilePath;
+        }
+
+        // Jika hanya sebagian sheet yang dipilih, gunakan manipulasi OpenXML ZIP stream
+        if (!copy($sourcePath, $outputFilePath)) {
+            throw new RuntimeException("Gagal menyiapkan file tujuan ekspor.");
+        }
+
+        $zip = new ZipArchive();
+        if ($zip->open($outputFilePath) !== true) {
+            @unlink($outputFilePath);
+            throw new RuntimeException("Gagal membuka arsip file Excel hasil kloning.");
+        }
+
+        try {
+            $wbXml = $zip->getFromName('xl/workbook.xml');
+            $relsXml = $zip->getFromName('xl/_rels/workbook.xml.rels');
+            $ctXml = $zip->getFromName('[Content_Types].xml');
+
+            if ($wbXml === false || $relsXml === false || $ctXml === false) {
+                throw new RuntimeException("Struktur internal OpenXML tidak lengkap.");
+            }
+
+            $wbDom = new DOMDocument();
+            $wbDom->loadXML($wbXml, LIBXML_NONET);
+            $wbXp = new DOMXPath($wbDom);
+
+            $relsDom = new DOMDocument();
+            $relsDom->loadXML($relsXml, LIBXML_NONET);
+            $relsXp = new DOMXPath($relsDom);
+
+            $ctDom = new DOMDocument();
+            $ctDom->loadXML($ctXml, LIBXML_NONET);
+            $ctXp = new DOMXPath($ctDom);
+
+            // Petakan relasi workbook
+            $relsMap = [];
+            foreach ($relsXp->query('//*[local-name()="Relationship"]') as $rel) {
+                $id = $rel->getAttribute('Id');
+                $target = $rel->getAttribute('Target');
+                $relsMap[$id] = [
+                    'node' => $rel,
+                    'target' => ltrim($target, '/'),
+                ];
+            }
+
+            $sheetNodes = $wbXp->query('//*[local-name()="sheets"]/*[local-name()="sheet"]');
+            $firstKeptNode = null;
+
+            foreach ($sheetNodes as $node) {
+                $name = $node->getAttribute('name');
+                $rId = $node->getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'id');
+                if (!$rId) {
+                    $rId = $node->getAttribute('r:id');
+                }
+
+                $isKept = false;
+                foreach ($sheetsToKeep as $keptName) {
+                    if (strcasecmp($name, $keptName) === 0) {
+                        $isKept = true;
+                        break;
+                    }
+                }
+
+                if ($isKept) {
+                    if ($firstKeptNode === null) {
+                        $firstKeptNode = $node;
+                        // Pastikan sheet pertama yang tersisa dalam keadaan visible
+                        if ($node->hasAttribute('state')) {
+                            $node->removeAttribute('state');
+                        }
+                    }
+                } else {
+                    // Hapus node sheet dari xl/workbook.xml
+                    $node->parentNode->removeChild($node);
+
+                    // Hapus node relasi dari xl/_rels/workbook.xml.rels dan hapus file sheet di ZIP
+                    if (isset($relsMap[$rId])) {
+                        $relNode = $relsMap[$rId]['node'];
+                        $target = $relsMap[$rId]['target'];
+                        $relNode->parentNode->removeChild($relNode);
+
+                        $zipTargetPath = 'xl/' . $target;
+                        $zip->deleteName($zipTargetPath);
+
+                        // Hapus file relasi individual worksheet jika ada
+                        $relTargetBase = basename($target);
+                        $sheetRelsPath = 'xl/worksheets/_rels/' . $relTargetBase . '.rels';
+                        $zip->deleteName($sheetRelsPath);
+
+                        // Hapus deklarasi part dari [Content_Types].xml
+                        $partName = '/xl/' . $target;
+                        foreach ($ctXp->query('//*[local-name()="Override"][@PartName="' . $partName . '"]') as $override) {
+                            $override->parentNode->removeChild($override);
+                        }
+                    }
+                }
+            }
+
+            // Atur activeTab ke 0 pada workbookView
+            $views = $wbXp->query('//*[local-name()="workbookView"]');
+            foreach ($views as $view) {
+                $view->setAttribute('activeTab', '0');
+            }
+
+            // Bersihkan definedNames yang merujuk pada sheet yang sudah dihapus
+            $definedNames = $wbXp->query('//*[local-name()="definedNames"]/*[local-name()="definedName"]');
+            foreach ($definedNames as $dn) {
+                $val = $dn->nodeValue;
+                $referToKeep = false;
+                foreach ($sheetsToKeep as $ks) {
+                    if (str_contains($val, "'" . $ks . "'!") || str_contains($val, $ks . "!")) {
+                        $referToKeep = true;
+                        break;
+                    }
+                }
+                if (!$referToKeep && (str_contains($val, '!') || str_contains($val, '#REF!'))) {
+                    $dn->parentNode->removeChild($dn);
+                }
+            }
+
+            $zip->addFromString('xl/workbook.xml', $wbDom->saveXML());
+            $zip->addFromString('xl/_rels/workbook.xml.rels', $relsDom->saveXML());
+            $zip->addFromString('[Content_Types].xml', $ctDom->saveXML());
+
+            return $outputFilePath;
+        } finally {
+            $zip->close();
+        }
+    }
 }

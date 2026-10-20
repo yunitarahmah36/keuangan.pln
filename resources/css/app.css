@@ -429,7 +429,7 @@ body {
 .spa-view-pane.active {
     display: block;
     opacity: 1;
-    transform: translateY(0);
+    transform: none;
 }
 
 /* Smooth Fade In keyframe */
