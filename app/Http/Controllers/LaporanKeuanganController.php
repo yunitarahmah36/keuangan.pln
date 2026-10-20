@@ -397,7 +397,8 @@ class LaporanKeuanganController extends Controller
         $sheetName = $request->query('sheet', $defaultSheet);
 
         try {
-            $data = $excelService->readSheetData($fullPath, $sheetName, 250);
+            $maxRows = (int)$request->query('max_rows', 2500);
+            $data = $excelService->readSheetData($fullPath, $sheetName, $maxRows);
             return response()->json([
                 'success' => true,
                 'data' => $data,

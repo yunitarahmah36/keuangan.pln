@@ -301,7 +301,7 @@ class ExcelWorkbookService
     /**
      * Membaca isi suatu sheet secara cepat dari .xlsx.
      */
-    public function readSheetData(string $filePath, string $sheetName, int $maxRows = 150): array
+    public function readSheetData(string $filePath, string $sheetName, int $maxRows = 2500): array
     {
         $zip = new ZipArchive();
         if ($zip->open($filePath) !== true) {
@@ -583,7 +583,7 @@ class ExcelWorkbookService
     /**
      * Membaca seluruh sheet di dalam workbook .xlsx dalam 1 sesi pembacaan cepat.
      */
-    public function readAllSheetsData(string $filePath, int $maxRows = 300): array
+    public function readAllSheetsData(string $filePath, int $maxRows = 2500): array
     {
         if (!file_exists($filePath)) {
             throw new RuntimeException("File tidak ditemukan: {$filePath}");
@@ -878,103 +878,227 @@ class ExcelWorkbookService
     }
 
     /**
-     * Membaca styles (font, fill, alignment) dari xl/styles.xml secara cepat dengan streaming XML.
+     * Membaca styles (font, fill, border, numFmts, alignment) dari xl/styles.xml secara cepat dengan regex parser.
      */
     protected function readWorkbookStyles(ZipArchive $zip): array
     {
         $stylesXml = $zip->getFromName('xl/styles.xml');
         if (!$stylesXml) {
-            return ['fonts' => [], 'fills' => [], 'cellXfs' => []];
+            return [
+                'numFmts' => [],
+                'fonts' => [],
+                'fills' => [],
+                'borders' => [],
+                'cellXfs' => [],
+            ];
         }
 
-        $fonts = [];
-        $fills = [];
-        $cellXfs = [];
+        // 1. Built-in Excel Number Formats
+        $numFmts = [
+            0 => 'General',
+            1 => '0',
+            2 => '0.00',
+            3 => '#,##0',
+            4 => '#,##0.00',
+            9 => '0%',
+            10 => '0.00%',
+            11 => '0.00E+00',
+            12 => '# ?/?',
+            13 => '# ??/??',
+            14 => 'yyyy-mm-dd',
+            15 => 'd-mmm-yy',
+            16 => 'd-mmm',
+            17 => 'mmm-yy',
+            18 => 'h:mm AM/PM',
+            19 => 'h:mm:ss AM/PM',
+            20 => 'h:mm',
+            21 => 'h:mm:ss',
+            22 => 'm/d/yy h:mm',
+            37 => '#,##0 ;(#,##0)',
+            38 => '#,##0 ;[Red](#,##0)',
+            39 => '#,##0.00;(#,##0.00)',
+            40 => '#,##0.00;[Red](#,##0.00)',
+            41 => '_(* #,##0_);_(* (#,##0);_(* "-"_);_(@_)',
+            42 => '_($* #,##0_);_($* (#,##0);_($* "-"_);_(@_)',
+            43 => '_(* #,##0.00_);_(* (#,##0.00);_(* "-"??_);_(@_)',
+            44 => '_($* #,##0.00_);_($* (#,##0.00);_($* "-"??_);_(@_)',
+            45 => 'mm:ss',
+            46 => '[h]:mm:ss',
+            47 => 'mmss.0',
+            48 => '##0.0E+0',
+            49 => '@',
+        ];
 
-        $xmlReader = new XMLReader();
-        $xmlReader->XML($stylesXml);
-
-        while ($xmlReader->read()) {
-            if ($xmlReader->nodeType == XMLReader::ELEMENT) {
-                $name = $xmlReader->localName;
-                if ($name === 'fonts') {
-                    $subReader = new XMLReader();
-                    $subReader->XML($xmlReader->readOuterXml());
-                    $fIdx = 0;
-                    while ($subReader->read()) {
-                        if ($subReader->nodeType == XMLReader::ELEMENT && $subReader->localName === 'font') {
-                            $fXml = new SimpleXMLElement($subReader->readOuterXml());
-                            $fonts[$fIdx++] = [
-                                'bold' => isset($fXml->b),
-                                'italic' => isset($fXml->i),
-                                'size' => isset($fXml->sz['val']) ? (float)$fXml->sz['val'] : null,
-                                'color' => isset($fXml->color['rgb']) ? '#' . substr((string)$fXml->color['rgb'], -6) : null,
-                            ];
-                        }
-                    }
-                    $subReader->close();
-                } elseif ($name === 'fills') {
-                    $subReader = new XMLReader();
-                    $subReader->XML($xmlReader->readOuterXml());
-                    $fillIdx = 0;
-                    while ($subReader->read()) {
-                        if ($subReader->nodeType == XMLReader::ELEMENT && $subReader->localName === 'fill') {
-                            $fillXml = new SimpleXMLElement($subReader->readOuterXml());
-                            $rgb = null;
-                            if (isset($fillXml->patternFill->fgColor['rgb'])) {
-                                $rawRgb = (string)$fillXml->patternFill->fgColor['rgb'];
-                                $rgb = '#' . substr($rawRgb, -6);
-                            }
-                            $fills[$fillIdx++] = [
-                                'rgb' => $rgb,
-                            ];
-                        }
-                    }
-                    $subReader->close();
-                } elseif ($name === 'cellXfs') {
-                    $subReader = new XMLReader();
-                    $subReader->XML($xmlReader->readOuterXml());
-                    $xfIdx = 0;
-                    while ($subReader->read()) {
-                        if ($subReader->nodeType == XMLReader::ELEMENT && $subReader->localName === 'xf') {
-                            $fontId = $subReader->getAttribute('fontId');
-                            $fillId = $subReader->getAttribute('fillId');
-                            $applyFont = $subReader->getAttribute('applyFont') === '1';
-                            $applyFill = $subReader->getAttribute('applyFill') === '1';
-
-                            $outer = $subReader->readOuterXml();
-                            $align = null;
-                            if (strpos($outer, '<alignment') !== false) {
-                                if (preg_match('/horizontal="([^"]+)"/', $outer, $hm)) {
-                                    $align['h'] = $hm[1];
-                                }
-                                if (preg_match('/vertical="([^"]+)"/', $outer, $vm)) {
-                                    $align['v'] = $vm[1];
-                                }
-                                if (strpos($outer, 'wrapText="1"') !== false) {
-                                    $align['wrap'] = true;
-                                }
-                            }
-
-                            $cellXfs[$xfIdx++] = [
-                                'fontId' => $fontId !== null ? (int)$fontId : null,
-                                'fillId' => $fillId !== null ? (int)$fillId : null,
-                                'applyFont' => $applyFont,
-                                'applyFill' => $applyFill,
-                                'align' => $align,
-                            ];
-                        }
-                    }
-                    $subReader->close();
-                    break;
+        // Custom numFmts dari styles.xml
+        if (preg_match('/<numFmts[^>]*>(.*?)<\/numFmts>/s', $stylesXml, $nfSection)) {
+            if (preg_match_all('/<numFmt\s+numFmtId="(\d+)"\s+formatCode="([^"]+)"/i', $nfSection[1], $nfMatches, PREG_SET_ORDER)) {
+                foreach ($nfMatches as $m) {
+                    $numFmts[(int)$m[1]] = html_entity_decode($m[2], ENT_QUOTES | ENT_XML1, 'UTF-8');
                 }
             }
         }
-        $xmlReader->close();
+
+        // Standard Theme Colors Palette (Office default theme)
+        $themePalette = [
+            0 => '#ffffff', 1 => '#000000', 2 => '#e7e6e6', 3 => '#44546a',
+            4 => '#4472c4', 5 => '#ed7d31', 6 => '#a5a5a5', 7 => '#ffc000',
+            8 => '#5b9bd5', 9 => '#70ad47'
+        ];
+
+        // 2. Parse Fonts
+        $fonts = [];
+        if (preg_match('/<fonts[^>]*>(.*?)<\/fonts>/s', $stylesXml, $fontSection)) {
+            if (preg_match_all('/<font(?:\s+[^>]*)?>(.*?)<\/font>/s', $fontSection[1], $fMatches)) {
+                $fIdx = 0;
+                foreach ($fMatches[1] as $fContent) {
+                    $fontName = null;
+                    if (preg_match('/<name\s+val="([^"]+)"/i', $fContent, $m)) {
+                        $fontName = $m[1];
+                    }
+                    $fontSize = null;
+                    if (preg_match('/<sz\s+val="([0-9.]+)"/i', $fContent, $m)) {
+                        $fontSize = (float)$m[1];
+                    }
+                    $color = null;
+                    if (preg_match('/<color\s+[^>]*rgb="([A-Fa-f0-9]{6,8})"/i', $fContent, $m)) {
+                        $color = '#' . substr($m[1], -6);
+                    } elseif (preg_match('/<color\s+[^>]*theme="(\d+)"/i', $fContent, $m)) {
+                        $color = $themePalette[(int)$m[1]] ?? null;
+                    }
+
+                    $fonts[$fIdx++] = [
+                        'name' => $fontName,
+                        'size' => $fontSize,
+                        'bold' => (bool)preg_match('/<b(?:\s|\/|>)/i', $fContent),
+                        'italic' => (bool)preg_match('/<i(?:\s|\/|>)/i', $fContent),
+                        'underline' => (bool)preg_match('/<u(?:\s|\/|>)/i', $fContent),
+                        'strike' => (bool)preg_match('/<strike(?:\s|\/|>)/i', $fContent),
+                        'color' => $color,
+                    ];
+                }
+            }
+        }
+
+        // 3. Parse Fills
+        $fills = [];
+        if (preg_match('/<fills[^>]*>(.*?)<\/fills>/s', $stylesXml, $fillSection)) {
+            if (preg_match_all('/<fill(?:\s+[^>]*)?>(.*?)<\/fill>/s', $fillSection[1], $flMatches)) {
+                $fillIdx = 0;
+                foreach ($flMatches[1] as $flContent) {
+                    $rgb = null;
+                    if (!preg_match('/patternType="none"/i', $flContent)) {
+                        if (preg_match('/<fgColor\s+[^>]*rgb="([A-Fa-f0-9]{6,8})"/i', $flContent, $m)) {
+                            $rgb = '#' . substr($m[1], -6);
+                        } elseif (preg_match('/<fgColor\s+[^>]*theme="(\d+)"/i', $flContent, $m)) {
+                            $rgb = $themePalette[(int)$m[1]] ?? null;
+                        }
+                    }
+                    $fills[$fillIdx++] = [
+                        'rgb' => $rgb,
+                    ];
+                }
+            }
+        }
+
+        // 4. Parse Borders (Map ke Univer BorderStyleTypes: 1=thin, 2=hair, 3=dotted, 4=dashed, 7=double, 8=medium, 13=thick)
+        $borderStyleMap = [
+            'none' => 0,
+            'thin' => 1,
+            'hair' => 2,
+            'dotted' => 3,
+            'dashed' => 4,
+            'dashdot' => 5,
+            'dashdotdot' => 6,
+            'double' => 7,
+            'medium' => 8,
+            'mediumdashed' => 9,
+            'mediumdashdot' => 10,
+            'mediumdashdotdot' => 11,
+            'slantdashdot' => 12,
+            'thick' => 13,
+        ];
+
+        $borders = [];
+        if (preg_match('/<borders[^>]*>(.*?)<\/borders>/s', $stylesXml, $borderSection)) {
+            if (preg_match_all('/<border(?:\s+[^>]*)?>(.*?)<\/border>/s', $borderSection[1], $bMatches)) {
+                $bIdx = 0;
+                $edges = [
+                    'left' => 'l',
+                    'right' => 'r',
+                    'top' => 't',
+                    'bottom' => 'b',
+                ];
+
+                foreach ($bMatches[1] as $bContent) {
+                    $borderData = [];
+                    foreach ($edges as $edge => $uKey) {
+                        if (preg_match('/<' . $edge . '(?:\s+style="([^"]+)")?[^>]*>(.*?)<\/' . $edge . '>/s', $bContent, $em)) {
+                            $styleName = strtolower($em[1] ?? '');
+                            if ($styleName && isset($borderStyleMap[$styleName]) && $borderStyleMap[$styleName] > 0) {
+                                $inner = $em[2];
+                                $bColor = '#000000';
+                                if (preg_match('/<color\s+[^>]*rgb="([A-Fa-f0-9]{6,8})"/i', $inner, $cm)) {
+                                    $bColor = '#' . substr($cm[1], -6);
+                                } elseif (preg_match('/<color\s+[^>]*theme="(\d+)"/i', $inner, $cm)) {
+                                    $bColor = $themePalette[(int)$cm[1]] ?? '#000000';
+                                }
+                                $borderData[$uKey] = [
+                                    's' => $borderStyleMap[$styleName],
+                                    'cl' => ['rgb' => $bColor],
+                                ];
+                            }
+                        }
+                    }
+                    $borders[$bIdx++] = $borderData;
+                }
+            }
+        }
+
+        // 5. Parse CellXfs
+        $cellXfs = [];
+        if (preg_match('/<cellXfs[^>]*>(.*?)<\/cellXfs>/s', $stylesXml, $xfSection)) {
+            if (preg_match_all('/<xf\s+([^>]+?)(?:\s*\/>|>(.*?)<\/xf>)/s', $xfSection[1], $xfMatches, PREG_SET_ORDER)) {
+                $xfIdx = 0;
+                foreach ($xfMatches as $xf) {
+                    $attrs = $xf[1];
+                    $inner = $xf[2] ?? '';
+                    $all = $attrs . ' ' . $inner;
+
+                    $numFmtId = preg_match('/numFmtId="(\d+)"/i', $attrs, $m) ? (int)$m[1] : null;
+                    $fontId = preg_match('/fontId="(\d+)"/i', $attrs, $m) ? (int)$m[1] : null;
+                    $fillId = preg_match('/fillId="(\d+)"/i', $attrs, $m) ? (int)$m[1] : null;
+                    $borderId = preg_match('/borderId="(\d+)"/i', $attrs, $m) ? (int)$m[1] : null;
+
+                    $align = null;
+                    if (strpos($all, '<alignment') !== false || strpos($attrs, 'horizontal=') !== false) {
+                        $align = [];
+                        if (preg_match('/horizontal="([^"]+)"/i', $all, $m)) {
+                            $align['h'] = strtolower($m[1]);
+                        }
+                        if (preg_match('/vertical="([^"]+)"/i', $all, $m)) {
+                            $align['v'] = strtolower($m[1]);
+                        }
+                        if (preg_match('/wrapText="1"/i', $all)) {
+                            $align['wrap'] = true;
+                        }
+                    }
+
+                    $cellXfs[$xfIdx++] = [
+                        'numFmtId' => $numFmtId,
+                        'fontId' => $fontId,
+                        'fillId' => $fillId,
+                        'borderId' => $borderId,
+                        'align' => $align,
+                    ];
+                }
+            }
+        }
 
         return [
+            'numFmts' => $numFmts,
             'fonts' => $fonts,
             'fills' => $fills,
+            'borders' => $borders,
             'cellXfs' => $cellXfs,
         ];
     }
@@ -982,7 +1106,7 @@ class ExcelWorkbookService
     /**
      * Membaca metadata sheet (kolom kustom lebar, sel yang dimerge) dari XML worksheet.
      */
-    protected function parseSheetMeta(string $sheetXml, int $maxCols = 60): array
+    protected function parseSheetMeta(string $sheetXml, int $maxCols = 150): array
     {
         $cols = [];
         if (preg_match('/<cols>(.*?)<\/cols>/s', $sheetXml, $colMatches)) {
@@ -1022,26 +1146,51 @@ class ExcelWorkbookService
         $xf = $styles['cellXfs'][$sIdx];
         $font = isset($xf['fontId']) && isset($styles['fonts'][$xf['fontId']]) ? $styles['fonts'][$xf['fontId']] : null;
         $fill = isset($xf['fillId']) && isset($styles['fills'][$xf['fillId']]) ? $styles['fills'][$xf['fillId']] : null;
+        $border = isset($xf['borderId']) && isset($styles['borders'][$xf['borderId']]) ? $styles['borders'][$xf['borderId']] : null;
+        $numFmtId = $xf['numFmtId'] ?? null;
+        $numFmtPattern = ($numFmtId !== null && isset($styles['numFmts'][$numFmtId])) ? $styles['numFmts'][$numFmtId] : null;
         $align = $xf['align'] ?? null;
 
         $sData = [];
-        if (!empty($font['bold'])) {
-            $sData['bl'] = 1;
+
+        // Font attributes
+        if ($font) {
+            if (!empty($font['name'])) {
+                $sData['ff'] = $font['name'];
+            }
+            if (!empty($font['size'])) {
+                $sData['fs'] = $font['size'];
+            }
+            if (!empty($font['bold'])) {
+                $sData['bl'] = 1;
+            }
+            if (!empty($font['italic'])) {
+                $sData['it'] = 1;
+            }
+            if (!empty($font['underline'])) {
+                $sData['ul'] = ['s' => 1];
+            }
+            if (!empty($font['strike'])) {
+                $sData['st'] = ['s' => 1];
+            }
+            if (!empty($font['color'])) {
+                $sData['cl'] = ['rgb' => $font['color']];
+            }
         }
-        if (!empty($font['italic'])) {
-            $sData['it'] = 1;
-        }
-        if (!empty($font['color'])) {
-            $sData['cl'] = ['rgb' => $font['color']];
-        }
-        if (!empty($font['size'])) {
-            $sData['fs'] = $font['size'];
-        }
+
+        // Fill background
         if (!empty($fill['rgb'])) {
             $sData['bg'] = ['rgb' => $fill['rgb']];
         }
+
+        // Table Borders (Top, Bottom, Left, Right)
+        if (!empty($border)) {
+            $sData['bd'] = $border;
+        }
+
+        // Text Alignments
         if (!empty($align['h'])) {
-            $hMap = ['left' => 1, 'center' => 2, 'right' => 3];
+            $hMap = ['left' => 1, 'center' => 2, 'right' => 3, 'justify' => 4];
             if (isset($hMap[$align['h']])) {
                 $sData['ht'] = $hMap[$align['h']];
             }
@@ -1054,6 +1203,11 @@ class ExcelWorkbookService
         }
         if (!empty($align['wrap'])) {
             $sData['tb'] = 3;
+        }
+
+        // Number Format Pattern (Accounting '-', Currency, Percent, Date)
+        if ($numFmtPattern && $numFmtPattern !== 'General') {
+            $sData['n'] = ['pattern' => $numFmtPattern];
         }
 
         return !empty($sData) ? $sData : null;

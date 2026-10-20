@@ -152,7 +152,8 @@ export function initUniverSpreadsheet() {
                             const rawVal = c.val !== null && c.val !== undefined ? c.val : '';
                             const formula = c.formula || null;
 
-                            const isNumeric = rawVal !== '' && !isNaN(Number(rawVal)) && isFinite(Number(rawVal));
+                            const isString = c.type === 's' || c.type === 'inlineStr';
+                            const isNumeric = !isString && rawVal !== '' && rawVal !== null && !isNaN(Number(rawVal)) && isFinite(Number(rawVal));
                             const parsedVal = isNumeric ? Number(rawVal) : rawVal;
 
                             const cellObj = {
@@ -163,51 +164,12 @@ export function initUniverSpreadsheet() {
                                 cellObj.f = formula.startsWith('=') ? formula.trim() : '=' + formula.trim();
                             }
 
-                            // Gabungkan style asli Excel dan penataan tabel rapi
+                            // Terapkan style asli dari Excel tanpa ditimpa style otomatis
                             let style = c.style ? { ...c.style } : {};
-                            const strVal = String(rawVal).trim();
 
-                            // A. Peletakan (Alignment):
+                            // Fallback alignment hanya jika sel numerik dan Excel tidak menentukan alignment horizontal
                             if (isNumeric && style.ht === undefined) {
-                                style.ht = 3; // Rata kanan untuk angka finansial
-                                if (style.vt === undefined) style.vt = 2; // Rata tengah vertikal
-                            } else if (style.ht === undefined && strVal.length > 0) {
-                                if (/^\d+$/.test(strVal) && strVal.length <= 4) {
-                                    style.ht = 2; // Nomor urut / kode pendek rata tengah
-                                } else {
-                                    style.ht = 1; // Rata kiri untuk deskripsi/akun
-                                }
-                                if (style.vt === undefined) style.vt = 2;
-                            }
-
-                            // B. Penataan tabel, header, dan warna PLN:
-                            const isHeaderWord = /^(no|kode\s*akun|kode|uraian|uraian\s*pos|nama\s*rekening|saldo|debet|kredit|mutasi|catatan|notes|rekening|keterangan|jumlah|rekapitulasi|persentase|status)$/i.test(strVal);
-
-                            // Header tabel kolom (misal: No, Uraian, Saldo Awal, Debet, Kredit, dll.)
-                            if (isHeaderWord || (rIdx <= 4 && strVal.length > 0 && !isNumeric && !style.bg)) {
-                                if (style.bl === undefined) style.bl = 1;
-                                if (style.ht === undefined || style.ht === 1) style.ht = 2;
-                                if (!style.bg && isHeaderWord) {
-                                    style.bg = { rgb: '#f1f5f9' }; // Latar abu-abu elegan untuk header
-                                }
-                            }
-
-                            // Baris Rekapitulasi / Total / Saldo Akhir
-                            if (/\b(total|jumlah|rekapitulasi|saldo akhir)\b/i.test(strVal)) {
-                                style.bl = 1;
-                                if (!style.bg) {
-                                    style.bg = { rgb: '#f0fdf4' }; // Hijau lembut khas PLN
-                                }
-                                if (!style.cl) {
-                                    style.cl = { rgb: '#166534' }; // Teks hijau pekat
-                                }
-                            }
-
-                            // Judul Utama Laporan Keuangan
-                            if (/(laporan\s*keuangan|pt\s*pln|konsolidasi|neraca|buku\s*besar)/i.test(strVal) && rIdx <= 2) {
-                                style.bl = 1;
-                                if (!style.fs) style.fs = 11;
-                                if (!style.cl) style.cl = { rgb: '#0f766e' }; // Aksen hijau tua PLN
+                                style.ht = 3; // Rata kanan untuk angka
                             }
 
                             if (Object.keys(style).length > 0) {

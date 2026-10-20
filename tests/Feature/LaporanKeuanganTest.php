@@ -43,11 +43,14 @@ class LaporanKeuanganTest extends TestCase
 
     public function test_can_import_excel_file_and_save_to_database(): void
     {
-        $tempFile = tempnam(sys_get_temp_dir(), 'xlsx');
-        $zip = new \ZipArchive();
-        $zip->open($tempFile, \ZipArchive::CREATE | \ZipArchive::OVERWRITE);
-        $zip->addFromString('xl/workbook.xml', '<?xml version="1.0" encoding="UTF-8"?><workbook><sheets><sheet name="NERACA"/></sheets></workbook>');
-        $zip->close();
+        $tempFile = tempnam(sys_get_temp_dir(), 'xlsx') . '.xlsx';
+        $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->setTitle('NERACA');
+        $sheet->setCellValue('A1', 'Aset Lancar');
+        $sheet->setCellValue('B1', 1500000);
+        $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
+        $writer->save($tempFile);
 
         $fakeFile = new UploadedFile(
             $tempFile,
