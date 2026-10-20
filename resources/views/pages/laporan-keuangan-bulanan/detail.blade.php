@@ -271,32 +271,93 @@
             </div>
 
             <div class="flex items-center gap-2 flex-shrink-0">
-                <!-- Tombol Simpan Perubahan -->
-                <button type="button"
-                        class="btn-save-univer-spreadsheet inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#FFD54F] hover:bg-[#FFCA28] text-[#4B2E21] text-xs font-bold shadow-xs hover:shadow transition-all active:scale-95 cursor-pointer">
-                    <svg class="save-icon-idle w-4 h-4 text-[#4B2E21]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                        <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
-                        <polyline points="17 21 17 13 7 13 7 21"></polyline>
-                        <polyline points="7 3 7 8 15 8"></polyline>
-                    </svg>
-                    <svg class="save-icon-loading hidden w-4 h-4 text-[#4B2E21] animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                        <circle cx="12" cy="12" r="10" stroke-opacity="0.25"></circle>
-                        <path d="M12 2a10 10 0 0 1 10 10"></path>
-                    </svg>
-                    <span class="save-btn-text">Simpan Perubahan</span>
-                </button>
+                <!-- Indikator Status Autosave Otomatis -->
+                <div id="autosave-status-container" class="autosave-status-container inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-black/25 text-xs font-semibold select-none border border-white/10 shadow-2xs" title="Status penyimpanan otomatis">
+                    <!-- Status: Tersimpan -->
+                    <div id="autosave-badge-saved" class="autosave-badge-saved flex items-center gap-1.5 text-emerald-300">
+                        <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+                        <svg class="w-3.5 h-3.5 text-emerald-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="20 6 9 17 4 12"></polyline>
+                        </svg>
+                        <span class="autosave-text">Tersimpan</span>
+                    </div>
 
-                <span class="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-black/20 text-[11px] font-semibold text-white/90">
-                    <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                    AutoSave Nyala
-                </span>
+                    <!-- Status: Menyimpan... -->
+                    <div id="autosave-badge-saving" class="autosave-badge-saving hidden flex items-center gap-1.5 text-amber-200">
+                        <svg class="w-3.5 h-3.5 animate-spin text-amber-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                            <circle cx="12" cy="12" r="10" stroke-opacity="0.25"></circle>
+                            <path d="M12 2a10 10 0 0 1 10 10"></path>
+                        </svg>
+                        <span class="autosave-text animate-pulse">Menyimpan...</span>
+                    </div>
+
+                    <!-- Status: Gagal menyimpan + Tombol Coba Lagi -->
+                    <div id="autosave-badge-error" class="autosave-badge-error hidden flex items-center gap-2 text-rose-200">
+                        <div class="flex items-center gap-1 text-rose-300">
+                            <svg class="w-3.5 h-3.5 text-rose-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                                <circle cx="12" cy="12" r="10"></circle>
+                                <line x1="12" y1="8" x2="12" y2="12"></line>
+                                <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                            </svg>
+                            <span class="autosave-text font-bold">Gagal menyimpan</span>
+                        </div>
+                        <button type="button" id="btn-retry-autosave" class="btn-retry-autosave px-2 py-0.5 rounded bg-rose-500 hover:bg-rose-600 text-white text-[11px] font-bold shadow-xs transition-colors cursor-pointer" title="Coba simpan ulang perubahan">
+                            Coba Lagi
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 2. KELOMPOK & SHEET TABS NAVIGATION BAR -->
+        @php
+            $firstKelompokKey = !empty($kelompokSheet) ? array_key_first($kelompokSheet) : 'Laporan Utama';
+            $firstGroupClean = preg_replace('/^\d+\.\s*/', '', $firstKelompokKey);
+            $sheetsInFirstGroup = $kelompokSheet[$firstKelompokKey] ?? ['NERACA', 'INCOME', 'LabaRugiNew', 'CashFlow'];
+            $activeSheetInDetail = $sheetsInFirstGroup[0] ?? ($firstSheetInFile ?? 'NERACA');
+        @endphp
+        <div id="group-sheet-tabs-bar" class="bg-[#FAF8F4] border-b border-[#D4D4D4] px-4 py-2 flex items-center justify-between gap-3 select-none">
+            <!-- Left: Group indicator & Scroll controls & Tab buttons -->
+            <div class="flex items-center gap-2 flex-1 min-w-0 overflow-hidden">
+                <div class="hidden md:flex items-center gap-1.5 px-2.5 py-1 bg-white border border-[rgba(75,46,33,0.12)] rounded-lg text-xs font-bold text-[#4B2E21] shadow-2xs flex-shrink-0">
+                    <span class="w-2 h-2 rounded-full bg-[#107C41]"></span>
+                    <span id="group-tabs-kelompok-badge">{{ $firstGroupClean }}</span>
+                </div>
+
+                <!-- Panah Geser Tab -->
+                <div class="flex items-center text-[#605E5C] pr-1.5 border-r border-[#D4D4D4] flex-shrink-0">
+                    <button type="button" id="btn-scroll-group-tabs-left" class="p-1 hover:bg-[#EDEBE9] rounded cursor-pointer text-xs" title="Geser Tab ke Kiri">◀</button>
+                    <button type="button" id="btn-scroll-group-tabs-right" class="p-1 hover:bg-[#EDEBE9] rounded cursor-pointer text-xs" title="Geser Tab ke Kanan">▶</button>
+                </div>
+
+                <!-- Container Tab Sheet untuk Kelompok yang Dipilih -->
+                <div class="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 flex-1 min-w-0" id="group-sheet-tabs-list">
+                    @foreach ($sheetsInFirstGroup as $sName)
+                        @php $isActive = ($sName === $activeSheetInDetail); @endphp
+                        <button type="button"
+                                class="univer-custom-tab-item px-3.5 py-1.5 text-xs rounded-lg transition-all flex items-center gap-1.5 cursor-pointer border {{ $isActive ? 'active bg-[#107C41] text-white border-[#107C41] font-extrabold shadow-sm' : 'bg-white text-[#4B2E21] hover:bg-[#FAF8F4] hover:text-[#107C41] border-[#D4D4D4] hover:border-[#107C41]/40 font-semibold shadow-2xs' }}"
+                                data-sheet-name="{{ $sName }}">
+                            <svg class="w-3.5 h-3.5 flex-shrink-0 {{ $isActive ? 'text-white' : 'text-[#8E7467]' }}" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                <polyline points="14 2 14 8 20 8" fill="{{ $isActive ? '#0E6835' : '#FAF8F4' }}"></polyline>
+                            </svg>
+                            <span class="truncate max-w-[180px]">{{ $sName }}</span>
+                        </button>
+                    @endforeach
+                </div>
+            </div>
+
+            <!-- Right: Total Sheet info in current group -->
+            <div class="text-[11px] font-bold text-[#8E7467] flex items-center gap-1 flex-shrink-0">
+                <span id="group-tabs-count-label">{{ count($sheetsInFirstGroup) }} Sheet</span>
             </div>
         </div>
 
         <!-- UNIVER SPREADSHEET CANVAS CONTAINER -->
         <div class="univer-spreadsheet-instance flex-1 w-full bg-white relative overflow-hidden"
              data-laporan-id="{{ $laporan->id }}"
-             data-active-sheet="{{ $firstSheetInFile ?? 'NERACA' }}"
+             data-active-kelompok="{{ $firstGroupClean }}"
+             data-active-sheet="{{ $activeSheetInDetail }}"
              data-csrf="{{ csrf_token() }}">
             
             <!-- Loading Indicator Overlay -->
@@ -323,8 +384,11 @@
             </div>
 
             <div class="flex items-center gap-3">
-                <div class="flex items-center gap-1 bg-black/15 px-2 py-0.5 rounded text-[10px]">
-                    <span class="univer-unsaved-badge">0 Perubahan</span>
+                <div class="flex items-center gap-1 text-white/80">
+                    <span>Sheet: <strong class="text-white font-mono" id="status-bar-sheet-name">{{ $activeSheetInDetail }}</strong></span>
+                </div>
+                <div class="flex items-center gap-1 bg-black/15 px-2 py-0.5 rounded text-[10px]" id="status-bar-unsaved-wrapper">
+                    <span id="status-bar-unsaved" class="univer-unsaved-badge">Tersimpan</span>
                 </div>
             </div>
         </div>

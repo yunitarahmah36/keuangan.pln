@@ -290,15 +290,39 @@ export function initUniverSpreadsheet() {
                 initialSnapshots
             };
 
-            // Setup tombol Simpan Perubahan
-            const saveBtn = container.querySelector('.btn-save-univer-spreadsheet') ||
-                            document.getElementById('btn-save-spreadsheet');
+            // Elemen Navigasi, Status Bar & Alert
+            const parentCard = container.closest('#excel-online-window') || container.closest('.bg-white') || document;
             const alertBanner = document.getElementById('excel-alert-banner') ||
                                 container.querySelector('.univer-alert-banner');
             const alertMessage = document.getElementById('excel-alert-message') ||
                                  container.querySelector('.univer-alert-message');
-            const unsavedBadge = document.getElementById('status-bar-unsaved') ||
+            const unsavedBadge = parentCard.querySelector('#status-bar-unsaved') ||
+                                 document.getElementById('status-bar-unsaved') ||
                                  container.querySelector('.univer-unsaved-badge');
+
+            // Elemen Indikator Autosave
+            const autosaveContainer = parentCard.querySelector('.autosave-status-container') ||
+                                      document.getElementById('autosave-status-container');
+            const autosaveSaved = parentCard.querySelector('.autosave-badge-saved') ||
+                                  document.getElementById('autosave-badge-saved');
+            const autosaveSaving = parentCard.querySelector('.autosave-badge-saving') ||
+                                   document.getElementById('autosave-badge-saving');
+            const autosaveError = parentCard.querySelector('.autosave-badge-error') ||
+                                  document.getElementById('autosave-badge-error');
+            const retryBtn = parentCard.querySelector('.btn-retry-autosave') ||
+                             document.getElementById('btn-retry-autosave');
+
+            // Setup Navigasi Tab Sheet Berdasarkan Kelompok yang Dipilih
+            const tabsList = parentCard.querySelector('#group-sheet-tabs-list') ||
+                             document.getElementById('group-sheet-tabs-list');
+            const groupBadge = parentCard.querySelector('#group-tabs-kelompok-badge') ||
+                               document.getElementById('group-tabs-kelompok-badge');
+            const countLabel = parentCard.querySelector('#group-tabs-count-label') ||
+                               document.getElementById('group-tabs-count-label');
+            const headerKelompokLabel = document.getElementById('header-kelompok-label');
+            const selectKelompok = document.getElementById('select-switch-kelompok');
+            const statusBarSheet = parentCard.querySelector('#status-bar-sheet-name') ||
+                                   document.getElementById('status-bar-sheet-name');
 
             function showAlert(msg, type = 'success') {
                 if (!alertBanner || !alertMessage) return;
@@ -319,6 +343,9 @@ export function initUniverSpreadsheet() {
                 }, 6000);
             }
 
+            // ========================================================
+            // FUNGSI CEK SEL YANG BERUBAH (DIFF SNAPSHOTS)
+            // ========================================================
             function getModifiedCells() {
                 const currentSnapshot = fWorkbook.save ? fWorkbook.save() : fWorkbook.getSnapshot();
                 const sheetsPayload = [];
@@ -335,8 +362,9 @@ export function initUniverSpreadsheet() {
                     const initialCellData = initialSnapshots[sId] || {};
 
                     const changedCells = [];
+                    const checkedKeys = new Set();
 
-                    // 1. Cek sel yang diedit atau baru di currentCellData
+                    // 1. Cek sel yang diedit, ditambah, atau bernilai baru
                     Object.keys(currentCellData).forEach((rKey) => {
                         const r = parseInt(rKey, 10);
                         const rowObj = currentCellData[r];
@@ -360,11 +388,39 @@ export function initUniverSpreadsheet() {
                                 const colLetter = indexToColLetter(c + 1);
                                 const rowNum = r + 1;
                                 const ref = `${colLetter}${rowNum}`;
+                                checkedKeys.add(`${r}_${c}`);
 
                                 changedCells.push({
                                     ref: ref,
                                     value: curVal !== null && curVal !== undefined ? curVal : '',
                                     formula: curFormula || null,
+                                });
+                            }
+                        });
+                    });
+
+                    // 2. Cek sel yang dihapus nilainya sehingga hilang dari currentCellData
+                    Object.keys(initialCellData).forEach((rKey) => {
+                        const r = parseInt(rKey, 10);
+                        const initRow = initialCellData[r];
+                        if (!initRow) return;
+
+                        Object.keys(initRow).forEach((cKey) => {
+                            const c = parseInt(cKey, 10);
+                            if (checkedKeys.has(`${r}_${c}`)) return;
+
+                            const initCell = initRow[c];
+                            const curCell = (currentCellData[r] && currentCellData[r][c]) ? currentCellData[r][c] : null;
+
+                            if (!curCell && (initCell?.v !== null && initCell?.v !== undefined && initCell?.v !== '')) {
+                                const colLetter = indexToColLetter(c + 1);
+                                const rowNum = r + 1;
+                                const ref = `${colLetter}${rowNum}`;
+
+                                changedCells.push({
+                                    ref: ref,
+                                    value: '',
+                                    formula: null,
                                 });
                             }
                         });
@@ -382,91 +438,208 @@ export function initUniverSpreadsheet() {
                 return { sheetsPayload, totalModified };
             }
 
-            if (saveBtn) {
-                saveBtn.addEventListener('click', () => {
-                    const { sheetsPayload, totalModified } = getModifiedCells();
+            // ========================================================
+            // AUTOSAVE STATUS & ENGINE
+            // ========================================================
+            let isSaving = false;
+            let pendingSaveRequested = false;
+            let autosaveTimer = null;
+            let isReadyForAutosave = false;
 
-                    if (totalModified === 0) {
-                        showAlert('Tidak ada perubahan sel atau rumus untuk disimpan.', 'success');
-                        return;
+            function setAutosaveStatus(state) {
+                if (autosaveSaved) autosaveSaved.classList.add('hidden');
+                if (autosaveSaving) autosaveSaving.classList.add('hidden');
+                if (autosaveError) autosaveError.classList.add('hidden');
+
+                if (state === 'saved') {
+                    if (autosaveSaved) autosaveSaved.classList.remove('hidden');
+                    if (unsavedBadge) {
+                        unsavedBadge.textContent = 'Tersimpan';
+                        unsavedBadge.className = 'univer-unsaved-badge flex items-center gap-1 bg-black/15 px-2 py-0.5 rounded text-[10px] text-white/90';
                     }
+                } else if (state === 'saving') {
+                    if (autosaveSaving) autosaveSaving.classList.remove('hidden');
+                    if (unsavedBadge) {
+                        unsavedBadge.textContent = 'Menyimpan...';
+                        unsavedBadge.className = 'univer-unsaved-badge flex items-center gap-1 bg-amber-400 text-[#4B2E21] font-bold px-2 py-0.5 rounded text-[10px]';
+                    }
+                } else if (state === 'error') {
+                    if (autosaveError) autosaveError.classList.remove('hidden');
+                    if (unsavedBadge) {
+                        unsavedBadge.textContent = 'Gagal menyimpan';
+                        unsavedBadge.className = 'univer-unsaved-badge flex items-center gap-1 bg-rose-500 text-white font-bold px-2 py-0.5 rounded text-[10px]';
+                    }
+                }
+            }
 
-                    const iconIdle = saveBtn.querySelector('.save-icon-idle') || document.getElementById('save-icon-idle');
-                    const iconLoading = saveBtn.querySelector('.save-icon-loading') || document.getElementById('save-icon-loading');
-                    const btnText = saveBtn.querySelector('.save-btn-text') || document.getElementById('btn-save-text');
+            function executeSave(options = {}) {
+                if (isSaving) {
+                    pendingSaveRequested = true;
+                    return Promise.resolve();
+                }
 
-                    saveBtn.disabled = true;
-                    if (iconIdle) iconIdle.classList.add('hidden');
-                    if (iconLoading) iconLoading.classList.remove('hidden');
-                    if (btnText) btnText.textContent = 'Menyimpan...';
+                const { sheetsPayload, totalModified } = getModifiedCells();
 
-                    fetch(`/laporan-keuangan-bulanan/${laporanId}/save-cells`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRF-TOKEN': csrfToken,
-                            'Accept': 'application/json',
-                        },
-                        body: JSON.stringify({
-                            sheets: sheetsPayload,
-                        }),
-                    })
-                    .then((res) => res.json())
-                    .then((data) => {
-                        if (data.success) {
-                            showAlert(`Berhasil! ${totalModified} perubahan sel dan rumus telah tersimpan ke dalam file Excel asli.`, 'success');
+                if (totalModified === 0) {
+                    setAutosaveStatus('saved');
+                    return Promise.resolve();
+                }
 
-                            // Update snapshot awal ke kondisi saat ini
-                            const updatedSnapshot = fWorkbook.save ? fWorkbook.save() : fWorkbook.getSnapshot();
-                            if (updatedSnapshot && updatedSnapshot.sheets) {
-                                Object.keys(updatedSnapshot.sheets).forEach((sId) => {
-                                    initialSnapshots[sId] = JSON.parse(JSON.stringify(updatedSnapshot.sheets[sId].cellData || {}));
-                                });
-                            }
+                isSaving = true;
+                setAutosaveStatus('saving');
 
-                            if (unsavedBadge) {
-                                unsavedBadge.textContent = '0 Perubahan';
-                                unsavedBadge.className = 'flex items-center gap-1 bg-black/15 px-2 py-0.5 rounded text-[10px] text-white/80';
-                            }
-                        } else {
-                            showAlert(data.message || 'Gagal menyimpan perubahan ke file Excel.', 'error');
+                return fetch(`/laporan-keuangan-bulanan/${laporanId}/save-cells`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': csrfToken,
+                        'Accept': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        sheets: sheetsPayload,
+                    }),
+                    keepalive: true,
+                })
+                .then((res) => res.json())
+                .then((data) => {
+                    if (data.success) {
+                        // Perbarui snapshot awal dengan snapshot terkini yang telah tersimpan
+                        const updatedSnapshot = fWorkbook.save ? fWorkbook.save() : fWorkbook.getSnapshot();
+                        if (updatedSnapshot && updatedSnapshot.sheets) {
+                            Object.keys(updatedSnapshot.sheets).forEach((sId) => {
+                                initialSnapshots[sId] = JSON.parse(JSON.stringify(updatedSnapshot.sheets[sId].cellData || {}));
+                            });
                         }
-                    })
-                    .catch((err) => {
-                        console.error('Error saat menyimpan perubahan:', err);
-                        showAlert('Terjadi kesalahan jaringan saat menyimpan file Excel.', 'error');
-                    })
-                    .finally(() => {
-                        saveBtn.disabled = false;
-                        if (iconIdle) iconIdle.classList.remove('hidden');
-                        if (iconLoading) iconLoading.classList.add('hidden');
-                        if (btnText) btnText.textContent = 'Simpan Perubahan';
-                    });
+
+                        isSaving = false;
+
+                        // Jika ada perubahan baru yang masuk selama proses penyimpanan
+                        const remaining = getModifiedCells();
+                        if (pendingSaveRequested || remaining.totalModified > 0) {
+                            pendingSaveRequested = false;
+                            scheduleAutosave(300);
+                        } else {
+                            setAutosaveStatus('saved');
+                        }
+                    } else {
+                        isSaving = false;
+                        setAutosaveStatus('error');
+                        showAlert(data.message || 'Gagal menyimpan perubahan ke server.', 'error');
+                    }
+                })
+                .catch((err) => {
+                    console.error('Autosave error:', err);
+                    isSaving = false;
+                    setAutosaveStatus('error');
+                    showAlert('Gagal menyimpan perubahan spreadsheet (koneksi terganggu). Klik "Coba Lagi" untuk menyimpan ulang.', 'error');
                 });
             }
 
-            // Listener perubahan perintah untuk update badge unsaved
+            function scheduleAutosave(delay = 1200) {
+                if (!isReadyForAutosave) return;
+
+                const { totalModified } = getModifiedCells();
+                if (totalModified === 0 && !isSaving) {
+                    setAutosaveStatus('saved');
+                    return;
+                }
+
+                if (!isSaving) {
+                    setAutosaveStatus('saving');
+                }
+
+                if (autosaveTimer) {
+                    clearTimeout(autosaveTimer);
+                }
+
+                autosaveTimer = setTimeout(() => {
+                    executeSave();
+                }, delay);
+            }
+
+            function flushAutosave() {
+                if (autosaveTimer) {
+                    clearTimeout(autosaveTimer);
+                    autosaveTimer = null;
+                }
+                const { totalModified } = getModifiedCells();
+                if (totalModified > 0) {
+                    executeSave({ immediate: true });
+                }
+            }
+
+            // Tombol Coba Lagi saat autosave gagal
+            if (retryBtn) {
+                retryBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    executeSave({ immediate: true });
+                });
+            }
+
+            // Aktifkan autosave setelah workbook siap
+            setTimeout(() => {
+                isReadyForAutosave = true;
+                setAutosaveStatus('saved');
+            }, 600);
+
+            // Listener perubahan sel di Univer
             try {
                 fWorkbook.onCommandExecuted(() => {
-                    const { totalModified } = getModifiedCells();
-                    if (unsavedBadge) {
-                        unsavedBadge.textContent = `${totalModified} Perubahan`;
-                        unsavedBadge.className = totalModified > 0
-                            ? 'flex items-center gap-1 bg-amber-400 text-[#4B2E21] font-bold px-2 py-0.5 rounded text-[10px]'
-                            : 'flex items-center gap-1 bg-black/15 px-2 py-0.5 rounded text-[10px] text-white/80';
+                    if (isReadyForAutosave) {
+                        scheduleAutosave(1200);
                     }
                 });
             } catch (e) {
-                // Command listener optional
+                console.warn('onCommandExecuted listener setup:', e);
             }
 
-            // Setup Navigasi Tab Sheet Berdasarkan Kelompok yang Dipilih
-            const tabsList = document.getElementById('group-sheet-tabs-list');
-            const groupBadge = document.getElementById('group-tabs-kelompok-badge');
-            const countLabel = document.getElementById('group-tabs-count-label');
-            const headerKelompokLabel = document.getElementById('header-kelompok-label');
-            const selectKelompok = document.getElementById('select-switch-kelompok');
-            const statusBarSheet = document.getElementById('status-bar-sheet-name');
+            // Listener focusout / keydown pada canvas editor sel
+            mountPoint.addEventListener('focusout', () => {
+                if (isReadyForAutosave) {
+                    scheduleAutosave(350);
+                }
+            }, true);
+
+            mountPoint.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === 'Tab') {
+                    if (isReadyForAutosave) {
+                        scheduleAutosave(400);
+                    }
+                }
+            }, true);
+
+            // ========================================================
+            // FUNGSI TAMPILAN TAB SHEET & INDIKATOR TAB AKTIF
+            // ========================================================
+            function updateActiveTabVisual(sheetName) {
+                if (!tabsList) return;
+                tabsList.querySelectorAll('.univer-custom-tab-item').forEach((tb) => {
+                    const isCur = (tb.dataset.sheetName === sheetName);
+                    if (isCur) {
+                        tb.className = 'univer-custom-tab-item active px-3.5 py-1.5 text-xs rounded-lg transition-all flex items-center gap-1.5 cursor-pointer border bg-[#107C41] text-white border-[#107C41] font-extrabold shadow-sm';
+                        const svg = tb.querySelector('svg');
+                        if (svg) {
+                            svg.className = 'w-3.5 h-3.5 flex-shrink-0 text-white';
+                            const poly = svg.querySelector('polyline');
+                            if (poly) poly.setAttribute('fill', '#0E6835');
+                        }
+                        tb.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+                    } else {
+                        tb.className = 'univer-custom-tab-item px-3.5 py-1.5 text-xs rounded-lg transition-all flex items-center gap-1.5 cursor-pointer border bg-white text-[#4B2E21] hover:bg-[#FAF8F4] hover:text-[#107C41] border-[#D4D4D4] hover:border-[#107C41]/40 font-semibold shadow-2xs';
+                        const svg = tb.querySelector('svg');
+                        if (svg) {
+                            svg.className = 'w-3.5 h-3.5 flex-shrink-0 text-[#8E7467]';
+                            const poly = svg.querySelector('polyline');
+                            if (poly) poly.setAttribute('fill', '#FAF8F4');
+                        }
+                    }
+                });
+
+                if (statusBarSheet) {
+                    statusBarSheet.textContent = sheetName;
+                }
+            }
 
             function renderTabsForGroup(groupName, sheetToSelect = null) {
                 const kelompokData = window.rawKelompokData || {};
@@ -491,22 +664,25 @@ export function initUniverSpreadsheet() {
                     const isActive = (sName === activeTarget);
                     const btn = document.createElement('button');
                     btn.type = 'button';
-                    btn.className = `univer-custom-tab-item px-3 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer border ${
+                    btn.className = `univer-custom-tab-item px-3.5 py-1.5 text-xs rounded-lg transition-all flex items-center gap-1.5 cursor-pointer border ${
                         isActive
-                            ? 'active bg-white text-[#107C41] border-[#107C41] shadow-xs'
-                            : 'bg-white/70 text-[#6B4D3F] hover:bg-white hover:text-[#107C41] border-[rgba(75,46,33,0.1)]'
+                            ? 'active bg-[#107C41] text-white border-[#107C41] font-extrabold shadow-sm'
+                            : 'bg-white text-[#4B2E21] hover:bg-[#FAF8F4] hover:text-[#107C41] border-[#D4D4D4] hover:border-[#107C41]/40 font-semibold shadow-2xs'
                     }`;
                     btn.dataset.sheetName = sName;
                     btn.innerHTML = `
-                        <svg class="w-3.5 h-3.5 flex-shrink-0 ${isActive ? 'text-[#107C41]' : 'text-[#8E7467]'}" viewBox="0 0 24 24" fill="currentColor">
+                        <svg class="w-3.5 h-3.5 flex-shrink-0 ${isActive ? 'text-white' : 'text-[#8E7467]'}" viewBox="0 0 24 24" fill="currentColor">
                             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                            <polyline points="14 2 14 8 20 8" fill="#FAF8F4"></polyline>
+                            <polyline points="14 2 14 8 20 8" fill="${isActive ? '#0E6835' : '#FAF8F4'}"></polyline>
                         </svg>
                         <span class="truncate max-w-[180px]">${sName}</span>
                     `;
 
                     btn.addEventListener('click', () => {
-                        // Aktifkan sheet di Univer instance
+                        // 1. Simpan perubahan sebelum berpindah sheet
+                        flushAutosave();
+
+                        // 2. Aktifkan sheet di Univer instance
                         const targetWs = fWorkbook.getSheetByName(sName);
                         if (targetWs) {
                             try {
@@ -516,19 +692,8 @@ export function initUniverSpreadsheet() {
                             }
                         }
 
-                        // Update tampilan tab aktif
-                        tabsList.querySelectorAll('.univer-custom-tab-item').forEach((tb) => {
-                            const isCur = tb.dataset.sheetName === sName;
-                            tb.className = `univer-custom-tab-item px-3 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer border ${
-                                isCur
-                                    ? 'active bg-white text-[#107C41] border-[#107C41] shadow-xs'
-                                    : 'bg-white/70 text-[#6B4D3F] hover:bg-white hover:text-[#107C41] border-[rgba(75,46,33,0.1)]'
-                            }`;
-                            const svg = tb.querySelector('svg');
-                            if (svg) svg.className = `w-3.5 h-3.5 flex-shrink-0 ${isCur ? 'text-[#107C41]' : 'text-[#8E7467]'}`;
-                        });
-
-                        if (statusBarSheet) statusBarSheet.textContent = sName;
+                        // 3. Perbarui visual tab aktif
+                        updateActiveTabVisual(sName);
                     });
 
                     tabsList.appendChild(btn);
@@ -544,7 +709,7 @@ export function initUniverSpreadsheet() {
                             console.warn('Gagal aktivasi sheet awal kelompok:', e);
                         }
                     }
-                    if (statusBarSheet) statusBarSheet.textContent = activeTarget;
+                    updateActiveTabVisual(activeTarget);
                 }
             }
 
@@ -557,10 +722,50 @@ export function initUniverSpreadsheet() {
             // Listener pergantian kelompok via dropdown
             if (selectKelompok) {
                 selectKelompok.addEventListener('change', function () {
+                    // Simpan perubahan sheet sebelum berganti kelompok
+                    flushAutosave();
                     const targetGroup = this.value;
                     renderTabsForGroup(targetGroup, null);
                 });
             }
+
+            // Sinkronisasi otomatis jika sheet aktif berganti di dalam Univer
+            try {
+                if (fWorkbook.activeSheet$ && typeof fWorkbook.activeSheet$.subscribe === 'function') {
+                    fWorkbook.activeSheet$.subscribe((sheet) => {
+                        if (sheet) {
+                            const name = sheet.getName ? sheet.getName() : sheet.name;
+                            if (name) updateActiveTabVisual(name);
+                        }
+                    });
+                }
+            } catch (e) {
+                // Subscription optional
+            }
+
+            // Cegah kehilangan data saat refresh atau meninggalkan halaman
+            const beforeUnloadHandler = (e) => {
+                const { sheetsPayload, totalModified } = getModifiedCells();
+                if (totalModified > 0 || isSaving) {
+                    // Gunakan sendBeacon / keepalive fetch untuk simpan darurat
+                    if (totalModified > 0 && navigator.sendBeacon) {
+                        const blob = new Blob([JSON.stringify({ sheets: sheetsPayload })], { type: 'application/json' });
+                        navigator.sendBeacon(`/laporan-keuangan-bulanan/${laporanId}/save-cells?_token=${encodeURIComponent(csrfToken)}`, blob);
+                    }
+                    e.preventDefault();
+                    e.returnValue = 'Perubahan spreadsheet sedang disimpan. Anda yakin ingin meninggalkan halaman?';
+                    return e.returnValue;
+                }
+            };
+            window.addEventListener('beforeunload', beforeUnloadHandler);
+
+            // Simpan saat klik navigasi tautan (SPA link)
+            document.addEventListener('click', (e) => {
+                const link = e.target.closest('a');
+                if (link) {
+                    flushAutosave();
+                }
+            }, true);
 
             // Scroll button panah tab kiri / kanan
             const btnScrollTabsLeft = document.getElementById('btn-scroll-group-tabs-left');
