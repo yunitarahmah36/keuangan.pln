@@ -612,34 +612,40 @@ export function initUniverSpreadsheet() {
             // ========================================================
             // FUNGSI TAMPILAN TAB SHEET & INDIKATOR TAB AKTIF
             // ========================================================
-            function updateActiveTabVisual(sheetName) {
-                if (!tabsList) return;
-                tabsList.querySelectorAll('.univer-custom-tab-item').forEach((tb) => {
-                    const isCur = (tb.dataset.sheetName === sheetName);
-                    if (isCur) {
-                        tb.className = 'univer-custom-tab-item active px-3.5 py-1.5 text-xs rounded-lg transition-all flex items-center gap-1.5 cursor-pointer border bg-[#107C41] text-white border-[#107C41] font-extrabold shadow-sm';
-                        const svg = tb.querySelector('svg');
-                        if (svg) {
-                            svg.className = 'w-3.5 h-3.5 flex-shrink-0 text-white';
-                            const poly = svg.querySelector('polyline');
-                            if (poly) poly.setAttribute('fill', '#0E6835');
-                        }
-                        tb.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
-                    } else {
-                        tb.className = 'univer-custom-tab-item px-3.5 py-1.5 text-xs rounded-lg transition-all flex items-center gap-1.5 cursor-pointer border bg-white text-[#4B2E21] hover:bg-[#FAF8F4] hover:text-[#107C41] border-[#D4D4D4] hover:border-[#107C41]/40 font-semibold shadow-2xs';
-                        const svg = tb.querySelector('svg');
-                        if (svg) {
-                            svg.className = 'w-3.5 h-3.5 flex-shrink-0 text-[#8E7467]';
-                            const poly = svg.querySelector('polyline');
-                            if (poly) poly.setAttribute('fill', '#FAF8F4');
-                        }
-                    }
-                });
 
-                if (statusBarSheet) {
-                    statusBarSheet.textContent = sheetName;
-                }
-            }
+
+function updateActiveTabVisual(sheetName) {
+    if (!tabsList) return;
+
+    const tabs = tabsList.querySelectorAll('.univer-custom-tab-item');
+
+    tabs.forEach((tab) => {
+        const isActive = tab.dataset.sheetName === sheetName;
+
+        tab.classList.toggle('active', isActive);
+
+        // Gunakan style langsung agar status aktif terlihat jelas
+        tab.style.backgroundColor = isActive ? '#107C41' : '#ffffff';
+        tab.style.color = isActive ? '#ffffff' : '#4B2E21';
+        tab.style.borderColor = isActive ? '#107C41' : '#D4D4D4';
+        tab.style.borderWidth = isActive ? '2px' : '1px';
+        tab.style.fontWeight = isActive ? '700' : '500';
+        tab.style.boxShadow = isActive
+            ? '0 2px 6px rgba(16, 124, 65, 0.2)'
+            : 'none';
+
+        const svg = tab.querySelector('svg');
+        if (svg) {
+            svg.style.color = isActive ? '#ffffff' : '#8E7467';
+        }
+    });
+
+    if (statusBarSheet) {
+        statusBarSheet.textContent = sheetName;
+    }
+}
+
+
 
             function renderTabsForGroup(groupName, sheetToSelect = null) {
                 const kelompokData = window.rawKelompokData || {};
@@ -660,44 +666,46 @@ export function initUniverSpreadsheet() {
                     ? sheetToSelect
                     : (sheetsInGroup[0] || null);
 
-                sheetsInGroup.forEach((sName) => {
-                    const isActive = (sName === activeTarget);
-                    const btn = document.createElement('button');
-                    btn.type = 'button';
-                    btn.className = `univer-custom-tab-item px-3.5 py-1.5 text-xs rounded-lg transition-all flex items-center gap-1.5 cursor-pointer border ${
-                        isActive
-                            ? 'active bg-[#107C41] text-white border-[#107C41] font-extrabold shadow-sm'
-                            : 'bg-white text-[#4B2E21] hover:bg-[#FAF8F4] hover:text-[#107C41] border-[#D4D4D4] hover:border-[#107C41]/40 font-semibold shadow-2xs'
-                    }`;
-                    btn.dataset.sheetName = sName;
-                    btn.innerHTML = `
-                        <svg class="w-3.5 h-3.5 flex-shrink-0 ${isActive ? 'text-white' : 'text-[#8E7467]'}" viewBox="0 0 24 24" fill="currentColor">
-                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                            <polyline points="14 2 14 8 20 8" fill="${isActive ? '#0E6835' : '#FAF8F4'}"></polyline>
-                        </svg>
-                        <span class="truncate max-w-[180px]">${sName}</span>
-                    `;
 
-                    btn.addEventListener('click', () => {
-                        // 1. Simpan perubahan sebelum berpindah sheet
-                        flushAutosave();
+sheetsInGroup.forEach((sName) => {
+    const isActive = sName === activeTarget;
+    const btn = document.createElement('button');
 
-                        // 2. Aktifkan sheet di Univer instance
-                        const targetWs = fWorkbook.getSheetByName(sName);
-                        if (targetWs) {
-                            try {
-                                targetWs.activate();
-                            } catch (e) {
-                                console.warn('Gagal aktivasi sheet:', e);
-                            }
-                        }
+    btn.type = 'button';
+    btn.dataset.sheetName = sName;
+    btn.className = 'univer-custom-tab-item px-3.5 py-1.5 text-xs rounded-lg transition-all flex items-center gap-1.5 cursor-pointer border';
 
-                        // 3. Perbarui visual tab aktif
-                        updateActiveTabVisual(sName);
-                    });
+    btn.innerHTML = `
+        <svg class="w-3.5 h-3.5 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14 2 14 8 20 8" fill="#FAF8F4"></polyline>
+        </svg>
+        <span class="truncate max-w-[180px]"></span>
+    `;
 
-                    tabsList.appendChild(btn);
-                });
+    btn.querySelector('span').textContent = sName;
+
+    btn.addEventListener('click', () => {
+        const targetWs = fWorkbook.getSheetByName(sName);
+
+        if (!targetWs) {
+            console.error('Sheet tidak ditemukan:', sName);
+            return;
+        }
+
+        flushAutosave();
+
+        try {
+            targetWs.activate();
+            updateActiveTabVisual(sName);
+        } catch (error) {
+            console.error('Gagal mengganti sheet:', error);
+        }
+    });
+
+    tabsList.appendChild(btn);
+});
+
 
                 // Aktifkan sheet awal kelompok di Univer
                 if (activeTarget) {
@@ -781,20 +789,135 @@ export function initUniverSpreadsheet() {
                 });
             }
 
-            // Fullscreen toggle jika ada tombol fullscreen
-            const fullscreenBtn = document.getElementById('btn-toggle-fullscreen');
+           
+            // Fullscreen toggle untuk Univer Spreadsheet (HANYA SPREADSHEET TANPA SIDEBAR)
+            const fullscreenBtns = document.querySelectorAll('#btn-toggle-fullscreen, #btn-toggle-fullscreen-window, .btn-toggle-fullscreen');
             const windowWrapper = document.getElementById('excel-online-window') || container;
-            if (fullscreenBtn && windowWrapper) {
-                fullscreenBtn.addEventListener('click', () => {
-                    if (!document.fullscreenElement) {
-                        windowWrapper.requestFullscreen().catch((err) => {
-                            console.log('Fullscreen request error:', err);
+
+            if (fullscreenBtns.length > 0 && windowWrapper) {
+                // Patch aman untuk unmount portal React/Radix saat node dipindah ke windowWrapper
+                if (!document.body._univerFsPatched) {
+                    document.body._univerFsPatched = true;
+                    const origRemoveChild = document.body.removeChild;
+                    document.body.removeChild = function (child) {
+                        if (child && child.parentNode && child.parentNode !== this) {
+                            return child.parentNode.removeChild(child);
+                        }
+                        return origRemoveChild.call(this, child);
+                    };
+
+                    const origContains = document.body.contains;
+                    document.body.contains = function (node) {
+                        return origContains.call(this, node) || (windowWrapper && windowWrapper.contains(node));
+                    };
+                }
+
+                function isUniverPortal(node) {
+                    if (!node || node.nodeType !== 1) return false;
+                    return (
+                        node.hasAttribute('data-radix-popper-content-wrapper') ||
+                        node.hasAttribute('data-radix-portal') ||
+                        node.hasAttribute('data-slot') ||
+                        node.hasAttribute('dir') ||
+                        node.classList.contains('univer-portal') ||
+                        node.querySelector?.('[data-u-comp], [data-slot], [data-radix-popper-content-wrapper], .univer-portal') !== null
+                    );
+                }
+
+                function syncPortalsToFullscreen(isFs) {
+                    if (isFs) {
+                        // Pindahkan portal Univer yang ada di body ke dalam windowWrapper agar tampil di fullscreen top-layer
+                        Array.from(document.body.children).forEach((child) => {
+                            if (child !== windowWrapper && !windowWrapper.contains(child) && isUniverPortal(child)) {
+                                child.dataset.univerFsPortal = 'true';
+                                windowWrapper.appendChild(child);
+                            }
                         });
                     } else {
-                        document.exitFullscreen();
+                        // Kembalikan portal ke document.body saat keluar dari fullscreen
+                        windowWrapper.querySelectorAll('[data-univer-fs-portal="true"]').forEach((el) => {
+                            delete el.dataset.univerFsPortal;
+                            document.body.appendChild(el);
+                        });
+                    }
+                }
+
+                // Pantau popup/dropdown baru yang dibuka saat sedang dalam mode fullscreen
+                const portalObserver = new MutationObserver((mutations) => {
+                    const isFs = document.fullscreenElement === windowWrapper || windowWrapper.classList.contains('excel-window-fullscreen');
+                    if (!isFs) return;
+
+                    for (const m of mutations) {
+                        for (const node of m.addedNodes) {
+                            if (node.nodeType === 1 && isUniverPortal(node)) {
+                                node.dataset.univerFsPortal = 'true';
+                                windowWrapper.appendChild(node);
+                            }
+                        }
                     }
                 });
+                portalObserver.observe(document.body, { childList: true });
+
+                function updateFullscreenIcons(isFullscreen) {
+                    document.querySelectorAll('.fullscreen-icon-expand').forEach(el => el.classList.toggle('hidden', isFullscreen));
+                    document.querySelectorAll('.fullscreen-icon-compress').forEach(el => el.classList.toggle('hidden', !isFullscreen));
+                    fullscreenBtns.forEach(btn => {
+                        btn.title = isFullscreen ? 'Kecilkan Tampilan (Keluar Fullscreen)' : 'Perbesar Tampilan (Fullscreen)';
+                    });
+                }
+
+                const toggleFullscreen = async () => {
+                    try {
+                        const isFs = document.fullscreenElement === windowWrapper || windowWrapper.classList.contains('excel-window-fullscreen');
+                        if (isFs) {
+                            if (document.fullscreenElement) {
+                                await document.exitFullscreen();
+                            } else {
+                                windowWrapper.classList.remove('excel-window-fullscreen');
+                                syncPortalsToFullscreen(false);
+                                updateFullscreenIcons(false);
+                            }
+                        } else {
+                            if (windowWrapper.requestFullscreen) {
+                                await windowWrapper.requestFullscreen();
+                            } else {
+                                windowWrapper.classList.add('excel-window-fullscreen');
+                                syncPortalsToFullscreen(true);
+                                updateFullscreenIcons(true);
+                            }
+                        }
+                    } catch (err) {
+                        console.warn('Fullscreen native request denied, using CSS window fullscreen:', err);
+                        const isNowMax = !windowWrapper.classList.contains('excel-window-fullscreen');
+                        windowWrapper.classList.toggle('excel-window-fullscreen', isNowMax);
+                        syncPortalsToFullscreen(isNowMax);
+                        updateFullscreenIcons(isNowMax);
+                        requestAnimationFrame(() => {
+                            window.dispatchEvent(new Event('resize'));
+                        });
+                    }
+                };
+
+                fullscreenBtns.forEach((btn) => {
+                    if (!btn.dataset.bound) {
+                        btn.dataset.bound = 'true';
+                        btn.addEventListener('click', toggleFullscreen);
+                    }
+                });
+
+                document.addEventListener('fullscreenchange', () => {
+                    const isFullscreen = document.fullscreenElement === windowWrapper;
+
+                    windowWrapper.classList.toggle('excel-window-fullscreen', isFullscreen);
+                    syncPortalsToFullscreen(isFullscreen);
+                    updateFullscreenIcons(isFullscreen);
+
+                    requestAnimationFrame(() => {
+                        window.dispatchEvent(new Event('resize'));
+                    });
+                });
             }
+
         })
         .catch((error) => {
             console.error('Inisialisasi Univer Spreadsheet gagal:', error);
@@ -823,3 +946,5 @@ if (document.readyState === 'loading') {
 }
 
 document.addEventListener('spa:view-changed', initUniverSpreadsheet);
+
+
