@@ -479,6 +479,9 @@ class ExcelWorkbookService
                 'rowHeights' => $rowHeights,
                 'hiddenRows' => $hiddenRows,
                 'freeze' => $meta['freeze'],
+                'activeCell' => $meta['activeCell'],
+                'activeRow' => $meta['activeRow'],
+                'activeCol' => $meta['activeCol'],
                 'tabColor' => $meta['tabColor'],
                 'showGridlines' => $meta['showGridlines'],
                 'zoomRatio' => $meta['zoomRatio'],
@@ -803,6 +806,9 @@ class ExcelWorkbookService
                     'rowHeights' => $rowHeights,
                     'hiddenRows' => $hiddenRows,
                     'freeze' => $meta['freeze'],
+                    'activeCell' => $meta['activeCell'],
+                    'activeRow' => $meta['activeRow'],
+                    'activeCol' => $meta['activeCol'],
                     'tabColor' => $meta['tabColor'],
                     'showGridlines' => $meta['showGridlines'],
                     'zoomRatio' => $meta['zoomRatio'],
@@ -1230,21 +1236,37 @@ class ExcelWorkbookService
                 $ySplit = preg_match('/ySplit="(\d+)"/', $pAttrs, $m) ? (int)$m[1] : 0;
                 $topLeftCell = preg_match('/topLeftCell="([A-Z0-9]+)"/', $pAttrs, $m) ? $m[1] : null;
 
-                $startColumn = $xSplit;
-                $startRow = $ySplit;
+                // Batas pemisah area beku di Univer WAJIB sama dengan ySplit dan xSplit
+                // agar baris & kolom header yang dibekukan selalu terkunci di posisi (0,0) tanpa terpotong / hilang.
+                $scrollColumn = $xSplit;
+                $scrollRow = $ySplit;
                 if ($topLeftCell && preg_match('/^([A-Z]+)(\d+)$/', $topLeftCell, $tlm)) {
-                    $startColumn = $this->columnLetterToIndex($tlm[1]) - 1;
-                    $startRow = (int)$tlm[2] - 1;
+                    $scrollColumn = $this->columnLetterToIndex($tlm[1]) - 1;
+                    $scrollRow = (int)$tlm[2] - 1;
                 }
 
                 if ($xSplit > 0 || $ySplit > 0) {
                     $freeze = [
                         'xSplit' => $xSplit,
                         'ySplit' => $ySplit,
-                        'startRow' => $startRow,
-                        'startColumn' => $startColumn,
+                        'startRow' => $ySplit,
+                        'startColumn' => $xSplit,
+                        'scrollRow' => $scrollRow,
+                        'scrollColumn' => $scrollColumn,
                     ];
                 }
+            }
+        }
+
+        // Active Cell & Selection
+        $activeCell = null;
+        $activeRow = null;
+        $activeCol = null;
+        if (preg_match('/<selection\s+[^>]*activeCell="([A-Z0-9]+)"/i', $sheetXml, $acm)) {
+            $activeCell = $acm[1];
+            if (preg_match('/^([A-Z]+)(\d+)$/', $activeCell, $m)) {
+                $activeCol = $this->columnLetterToIndex($m[1]) - 1;
+                $activeRow = (int)$m[2] - 1;
             }
         }
 
@@ -1295,6 +1317,9 @@ class ExcelWorkbookService
             'cols' => $cols,
             'merges' => $merges,
             'freeze' => $freeze,
+            'activeCell' => $activeCell,
+            'activeRow' => $activeRow,
+            'activeCol' => $activeCol,
             'tabColor' => $tabColor,
             'showGridlines' => $showGridlines,
             'zoomRatio' => $zoomRatio,

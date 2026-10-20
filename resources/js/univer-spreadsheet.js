@@ -91,6 +91,7 @@ export function initUniverSpreadsheet() {
             const sheetOrder = [];
             const sheetsMap = {};
             const initialSnapshots = {};
+            const sheetViewMetadata = {};
 
             window.sheetTabColors = window.sheetTabColors || {};
 
@@ -229,13 +230,27 @@ export function initUniverSpreadsheet() {
                 };
 
                 // Terapkan Freeze Panes asli dari Excel untuk semua sheet yang memilikinya
+                // Catatan krusial: Di Univer, batas awal panel beku (startRow & startColumn) WAJIB sama dengan ySplit & xSplit
+                // agar baris & kolom header tabel selalu terkunci rapat di (0,0) dan tidak terdorong/hilang.
                 if (sData.freeze && (sData.freeze.xSplit > 0 || sData.freeze.ySplit > 0)) {
                     sheetDef.freeze = {
                         xSplit: sData.freeze.xSplit || 0,
                         ySplit: sData.freeze.ySplit || 0,
-                        startRow: sData.freeze.startRow !== undefined ? sData.freeze.startRow : (sData.freeze.ySplit || 0),
-                        startColumn: sData.freeze.startColumn !== undefined ? sData.freeze.startColumn : (sData.freeze.xSplit || 0),
+                        startRow: sData.freeze.ySplit || 0,
+                        startColumn: sData.freeze.xSplit || 0,
                     };
+                }
+
+                // Catat posisi scroll awal dan sel aktif dari file Excel
+                sheetViewMetadata[cleanName] = {
+                    scrollRow: sData.freeze?.scrollRow !== undefined ? sData.freeze.scrollRow : sData.scrollRow,
+                    scrollColumn: sData.freeze?.scrollColumn !== undefined ? sData.freeze.scrollColumn : sData.scrollColumn,
+                    activeCell: sData.activeCell || null,
+                    activeRow: sData.activeRow !== undefined ? sData.activeRow : null,
+                    activeCol: sData.activeCol !== undefined ? sData.activeCol : null,
+                };
+                if (cleanName !== sData.sheet && sData.sheet) {
+                    sheetViewMetadata[sData.sheet] = sheetViewMetadata[cleanName];
                 }
 
                 // Warna Tab Asli Excel
@@ -725,6 +740,37 @@ sheetsInGroup.forEach((sName) => {
         titleSpan.textContent = sName;
     }
 
+    function applySheetInitialView(targetWs, sheetName) {
+        const meta = sheetViewMetadata[sheetName];
+        if (!meta) return;
+
+        setTimeout(() => {
+            try {
+                // Terapkan sel aktif jika ada (misal X75)
+                if (meta.activeCell && typeof targetWs.getRange === 'function') {
+                    const range = targetWs.getRange(meta.activeCell);
+                    if (range && typeof targetWs.setActiveRange === 'function') {
+                        targetWs.setActiveRange(range);
+                    }
+                } else if (meta.activeRow !== null && meta.activeCol !== null && typeof targetWs.getRange === 'function') {
+                    const range = targetWs.getRange(meta.activeRow, meta.activeCol, 1, 1);
+                    if (range && typeof targetWs.setActiveRange === 'function') {
+                        targetWs.setActiveRange(range);
+                    }
+                }
+
+                // Terapkan scroll jika file Excel menyimpan posisi scroll (misal M56)
+                if (typeof targetWs.scrollToCell === 'function') {
+                    if (meta.scrollRow !== undefined && meta.scrollColumn !== undefined && (meta.scrollRow > 0 || meta.scrollColumn > 0)) {
+                        targetWs.scrollToCell(meta.scrollRow, meta.scrollColumn);
+                    }
+                }
+            } catch (e) {
+                console.debug('Error applying initial view for sheet:', sheetName, e);
+            }
+        }, 100);
+    }
+
     btn.addEventListener('click', () => {
         const targetWs = fWorkbook.getSheetByName(sName);
 
@@ -737,6 +783,7 @@ sheetsInGroup.forEach((sName) => {
 
         try {
             targetWs.activate();
+            applySheetInitialView(targetWs, sName);
             updateActiveTabVisual(sName);
         } catch (error) {
             console.error('Gagal mengganti sheet:', error);
@@ -753,6 +800,7 @@ sheetsInGroup.forEach((sName) => {
                     if (targetWs) {
                         try {
                             targetWs.activate();
+                            applySheetInitialView(targetWs, activeTarget);
                         } catch (e) {
                             console.warn('Gagal aktivasi sheet awal kelompok:', e);
                         }
