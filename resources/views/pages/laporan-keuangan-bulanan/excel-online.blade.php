@@ -38,16 +38,6 @@
                     </svg>
                 </div>
             </div>
-
-            <!-- Fullscreen Toggle Button -->
-            <button type="button"
-                    id="btn-toggle-fullscreen"
-                    class="p-2 bg-white hover:bg-[#FAF8F4] text-[#4B2E21] border border-[rgba(75,46,33,0.16)] rounded-xl shadow-2xs text-xs font-bold transition-all cursor-pointer"
-                    title="Perbesar Tampilan">
-                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
-                </svg>
-            </button>
         </div>
     </div>
 
@@ -75,12 +65,6 @@
                         <h2 class="text-xs sm:text-sm font-bold text-white tracking-wide truncate">
                             {{ $laporan->nama_file }}
                         </h2>
-                        <span class="hidden md:inline-flex items-center gap-1 text-[10px] bg-white/20 px-2 py-0.5 rounded-full font-medium" id="cloud-sync-status">
-                            <svg class="w-2.5 h-2.5 text-emerald-200" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
-                                <polyline points="20 6 9 17 4 12"></polyline>
-                            </svg>
-                            Tersimpan di Cloud
-                        </span>
                     </div>
                     <div class="text-[11px] text-white/80 flex items-center gap-2">
                         <span>Excel Online &bull; {{ $laporan->periode_formatted }}</span>
@@ -141,16 +125,6 @@
                         </button>
                     </div>
                 </div>
-                <button type="button"
-                        onclick="window.print()"
-                        class="p-1.5 hover:bg-white/15 rounded-lg text-white/90 hover:text-white transition-colors cursor-pointer"
-                        title="Cetak Spreadsheet">
-                    <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <polyline points="6 9 6 2 18 2 18 9"></polyline>
-                        <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path>
-                        <rect x="6" y="14" width="12" height="8"></rect>
-                    </svg>
-                </button>
 
                 <!-- Fullscreen Toggle Button in Green Bar -->
                 <button type="button"
