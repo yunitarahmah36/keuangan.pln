@@ -546,6 +546,12 @@ class LaporanKeuanganTest extends TestCase
         $this->assertCount(2, $extractedSheetNames);
         $this->assertEquals(['NERACA', 'CashFlow'], $extractedSheetNames);
 
+        // Pastikan tidak ada calcChain.xml yang merusak perhitungan OpenXML Excel
+        $zipCheck = new \ZipArchive();
+        $this->assertTrue($zipCheck->open($downloadedFile) === true);
+        $this->assertFalse($zipCheck->locateName('xl/calcChain.xml') !== false);
+        $zipCheck->close();
+
         if (file_exists($fullPath)) {
             @unlink($fullPath);
         }

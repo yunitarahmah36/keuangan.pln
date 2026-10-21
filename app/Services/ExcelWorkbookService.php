@@ -536,85 +536,28 @@ class ExcelWorkbookService
 
             foreach ($cellsToUpdate as $item) {
                 $ref = strtoupper(trim($item['ref'] ?? ''));
-                if (!$ref || !preg_match('/^([A-Z]+)(\d+)$/', $ref, $matches)) {
+                if (!$ref || !preg_match('/^([A-Z]+)(\d+)$/', $ref)) {
                     continue;
                 }
 
-                $col = $matches[1];
-                $rowNum = (int)$matches[2];
                 $value = $item['value'] ?? '';
                 $formula = $item['formula'] ?? null;
 
-                // Jika formula dikirimkan dengan '=', bersihkan agar sesuai standar XML Office Open XML (<f>SUM(...)</f>)
-                if ($formula && str_starts_with($formula, '=')) {
-                    $formula = ltrim($formula, '=');
-                }
-
-                // Jika value diawali dengan '=', perlakukan juga sebagai formula
-                if (is_string($value) && str_starts_with($value, '=')) {
-                    $formula = ltrim($value, '=');
-                    $value = $item['calculatedValue'] ?? '0';
-                }
-
-                // Cari baris
-                $rowNodes = $xp->query('./*[local-name()="row"][@r="' . $rowNum . '"]', $sheetData);
-                if ($rowNodes->length > 0) {
-                    $rowNode = $rowNodes->item(0);
-                } else {
-                    $rowNode = $dom->createElement('row');
-                    $rowNode->setAttribute('r', (string)$rowNum);
-                    $sheetData->appendChild($rowNode);
-                }
-
-                // Cari sel
-                $cellNodes = $xp->query('./*[local-name()="c"][@r="' . $ref . '"]', $rowNode);
-                if ($cellNodes->length > 0) {
-                    $cNode = $cellNodes->item(0);
-                } else {
-                    $cNode = $dom->createElement('c');
-                    $cNode->setAttribute('r', $ref);
-                    $rowNode->appendChild($cNode);
-                }
-
-                // Bersihkan tipe string jika menjadi formula atau angka
-                if ($cNode->hasAttribute('t') && ($formula || is_numeric($value))) {
-                    $cNode->removeAttribute('t');
-                }
-
-                // Update atau buat elemen formula <f>
-                $fNodes = $xp->query('./*[local-name()="f"]', $cNode);
-                if ($formula) {
-                    if ($fNodes->length > 0) {
-                        $fNodes->item(0)->nodeValue = $formula;
-                    } else {
-                        $fElem = $dom->createElement('f', htmlspecialchars($formula));
-                        $cNode->insertBefore($fElem, $cNode->firstChild);
-                    }
-                } else {
-                    // Jika formula dihapus
-                    foreach ($fNodes as $fNode) {
-                        $cNode->removeChild($fNode);
-                    }
-                }
-
-                // Update atau buat elemen value <v>
-                $vNodes = $xp->query('./*[local-name()="v"]', $cNode);
-                if ($vNodes->length > 0) {
-                    $vNodes->item(0)->nodeValue = (string)$value;
-                } else {
-                    $vElem = $dom->createElement('v', (string)$value);
-                    $cNode->appendChild($vElem);
-                }
+                $this->updateCellInSheetDom($dom, $xp, $sheetData, $ref, $value, $formula);
 
                 $updatedCells[] = [
                     'ref' => $ref,
                     'value' => $value,
-                    'formula' => $formula ? '=' . $formula : null,
+                    'formula' => $formula ? (str_starts_with($formula, '=') ? $formula : '=' . $formula) : null,
                 ];
             }
 
-            // Simpan kembali XML sheet ke dalam file zip
-            $zip->addFromString($targetPath, $dom->saveXML());
+            // Bersihkan calcChain.xml jika ada karena nilai sel/rumus telah berubah
+            $this->cleanCalcChainIfPresent($zip);
+
+            // Simpan kembali XML sheet yang telah dinormalisasi ke dalam file zip
+            $normalizedXml = $this->normalizeSheetXml($dom->saveXML());
+            $zip->addFromString($targetPath, $normalizedXml);
             $zip->close();
 
             return [
@@ -881,75 +824,24 @@ class ExcelWorkbookService
 
                 foreach ($cellsToUpdate as $item) {
                     $ref = strtoupper(trim($item['ref'] ?? ''));
-                    if (!$ref || !preg_match('/^([A-Z]+)(\d+)$/', $ref, $matches)) {
+                    if (!$ref || !preg_match('/^([A-Z]+)(\d+)$/', $ref)) {
                         continue;
                     }
 
-                    $rowNum = (int)$matches[2];
                     $value = $item['value'] ?? '';
                     $formula = $item['formula'] ?? null;
 
-                    if ($formula && str_starts_with($formula, '=')) {
-                        $formula = ltrim($formula, '=');
-                    }
-
-                    if (is_string($value) && str_starts_with($value, '=')) {
-                        $formula = ltrim($value, '=');
-                        $value = $item['calculatedValue'] ?? '0';
-                    }
-
-                    $rowNodes = $xp->query('./*[local-name()="row"][@r="' . $rowNum . '"]', $sheetData);
-                    if ($rowNodes->length > 0) {
-                        $rowNode = $rowNodes->item(0);
-                    } else {
-                        $rowNode = $dom->createElement('row');
-                        $rowNode->setAttribute('r', (string)$rowNum);
-                        $sheetData->appendChild($rowNode);
-                    }
-
-                    $cellNodes = $xp->query('./*[local-name()="c"][@r="' . $ref . '"]', $rowNode);
-                    if ($cellNodes->length > 0) {
-                        $cNode = $cellNodes->item(0);
-                    } else {
-                        $cNode = $dom->createElement('c');
-                        $cNode->setAttribute('r', $ref);
-                        $rowNode->appendChild($cNode);
-                    }
-
-                    if ($cNode->hasAttribute('t') && ($formula || is_numeric($value))) {
-                        $cNode->removeAttribute('t');
-                    }
-
-                    $fNodes = $xp->query('./*[local-name()="f"]', $cNode);
-                    if ($formula) {
-                        if ($fNodes->length > 0) {
-                            $fNodes->item(0)->nodeValue = $formula;
-                        } else {
-                            $fElem = $dom->createElement('f', htmlspecialchars($formula));
-                            $cNode->insertBefore($fElem, $cNode->firstChild);
-                        }
-                    } else {
-                        foreach ($fNodes as $fNode) {
-                            $cNode->removeChild($fNode);
-                        }
-                    }
-
-                    $vNodes = $xp->query('./*[local-name()="v"]', $cNode);
-                    if ($vNodes->length > 0) {
-                        $vNodes->item(0)->nodeValue = (string)$value;
-                    } else {
-                        $vElem = $dom->createElement('v', (string)$value);
-                        $cNode->appendChild($vElem);
-                    }
+                    $this->updateCellInSheetDom($dom, $xp, $sheetData, $ref, $value, $formula);
 
                     $updatedCells[] = [
                         'ref' => $ref,
                         'value' => $value,
-                        'formula' => $formula ? '=' . $formula : null,
+                        'formula' => $formula ? (str_starts_with($formula, '=') ? $formula : '=' . $formula) : null,
                     ];
                 }
 
-                $zip->addFromString($targetPath, $dom->saveXML());
+                $normalizedXml = $this->normalizeSheetXml($dom->saveXML());
+                $zip->addFromString($targetPath, $normalizedXml);
                 $totalUpdatedCount += count($updatedCells);
                 $results[] = [
                     'sheet' => $sName,
@@ -957,6 +849,9 @@ class ExcelWorkbookService
                     'updatedCells' => $updatedCells,
                 ];
             }
+
+            // Bersihkan calcChain.xml jika ada karena nilai sel/rumus telah berubah
+            $this->cleanCalcChainIfPresent($zip);
 
             $zip->close();
 
@@ -1479,10 +1374,24 @@ class ExcelWorkbookService
             $outputFilePath = $tempDir . DIRECTORY_SEPARATOR . 'export_' . uniqid() . '.xlsx';
         }
 
-        // Jika seluruh sheet dipilih, cukup salin file asli
+        // Jika seluruh sheet dipilih, salin file asli, bersihkan calcChain dan normalisasikan seluruh sheet
         if (count($sheetsToKeep) === count($allSheets)) {
             if (!copy($sourcePath, $outputFilePath)) {
                 throw new RuntimeException("Gagal menduplikasi file workbook asli.");
+            }
+            $zipAll = new ZipArchive();
+            if ($zipAll->open($outputFilePath) === true) {
+                $this->cleanCalcChainIfPresent($zipAll);
+                for ($i = 0; $i < $zipAll->numFiles; $i++) {
+                    $entryName = $zipAll->getNameIndex($i);
+                    if (str_starts_with($entryName, 'xl/worksheets/') && str_ends_with($entryName, '.xml') && !str_contains($entryName, '_rels')) {
+                        $rawXml = $zipAll->getFromName($entryName);
+                        if ($rawXml !== false) {
+                            $zipAll->addFromString($entryName, $this->normalizeSheetXml($rawXml));
+                        }
+                    }
+                }
+                $zipAll->close();
             }
             return $outputFilePath;
         }
@@ -1519,6 +1428,15 @@ class ExcelWorkbookService
             $ctDom->loadXML($ctXml, LIBXML_NONET);
             $ctXp = new DOMXPath($ctDom);
 
+            // 1. Bersihkan calcChain.xml agar Excel tidak mengeluarkan pesan kerusakan urutan hitung rumus
+            $zip->deleteName('xl/calcChain.xml');
+            foreach ($ctXp->query('//*[local-name()="Override"][@PartName="/xl/calcChain.xml"]') as $override) {
+                $override->parentNode->removeChild($override);
+            }
+            foreach ($relsXp->query('//*[local-name()="Relationship"][@Target="calcChain.xml" or @Target="/xl/calcChain.xml"]') as $rel) {
+                $rel->parentNode->removeChild($rel);
+            }
+
             // Petakan relasi workbook
             $relsMap = [];
             foreach ($relsXp->query('//*[local-name()="Relationship"]') as $rel) {
@@ -1532,6 +1450,10 @@ class ExcelWorkbookService
 
             $sheetNodes = $wbXp->query('//*[local-name()="sheets"]/*[local-name()="sheet"]');
             $firstKeptNode = null;
+            $oldIndexToNewIndex = [];
+            $sheetIdx = 0;
+            $newIdx = 0;
+            $keptSheetNames = [];
 
             foreach ($sheetNodes as $node) {
                 $name = $node->getAttribute('name');
@@ -1549,11 +1471,25 @@ class ExcelWorkbookService
                 }
 
                 if ($isKept) {
+                    $oldIndexToNewIndex[$sheetIdx] = $newIdx;
+                    $keptSheetNames[] = $name;
+                    $newIdx++;
+
                     if ($firstKeptNode === null) {
                         $firstKeptNode = $node;
                         // Pastikan sheet pertama yang tersisa dalam keadaan visible
                         if ($node->hasAttribute('state')) {
                             $node->removeAttribute('state');
+                        }
+                    }
+
+                    // Normalisasikan XML worksheet (urutkan sel, nomor baris, dan tipe teks t="str")
+                    if (isset($relsMap[$rId])) {
+                        $target = $relsMap[$rId]['target'];
+                        $zipTargetPath = 'xl/' . $target;
+                        $rawXml = $zip->getFromName($zipTargetPath);
+                        if ($rawXml !== false) {
+                            $zip->addFromString($zipTargetPath, $this->normalizeSheetXml($rawXml));
                         }
                     }
                 } else {
@@ -1581,27 +1517,90 @@ class ExcelWorkbookService
                         }
                     }
                 }
+                $sheetIdx++;
             }
 
-            // Atur activeTab ke 0 pada workbookView
+            // Atur activeTab dan firstSheet ke 0 pada workbookView
             $views = $wbXp->query('//*[local-name()="workbookView"]');
             foreach ($views as $view) {
                 $view->setAttribute('activeTab', '0');
+                $view->setAttribute('firstSheet', '0');
             }
 
-            // Bersihkan definedNames yang merujuk pada sheet yang sudah dihapus
+            // 2. Bersihkan dan sinkronkan definedNames (named ranges)
             $definedNames = $wbXp->query('//*[local-name()="definedNames"]/*[local-name()="definedName"]');
             foreach ($definedNames as $dn) {
                 $val = $dn->nodeValue;
-                $referToKeep = false;
-                foreach ($sheetsToKeep as $ks) {
-                    if (str_contains($val, "'" . $ks . "'!") || str_contains($val, $ks . "!")) {
-                        $referToKeep = true;
-                        break;
+
+                // Jika memiliki localSheetId, sesuaikan dengan indeks sheet baru atau hapus jika sheet telah dibuang
+                if ($dn->hasAttribute('localSheetId')) {
+                    $oldLsId = (int)$dn->getAttribute('localSheetId');
+                    if (isset($oldIndexToNewIndex[$oldLsId])) {
+                        $dn->setAttribute('localSheetId', (string)$oldIndexToNewIndex[$oldLsId]);
+                    } else {
+                        $dn->parentNode->removeChild($dn);
+                        continue;
                     }
                 }
-                if (!$referToKeep && (str_contains($val, '!') || str_contains($val, '#REF!'))) {
+
+                // Hapus jika merujuk pada sheet yang sudah dibuang
+                if (str_contains($val, '!')) {
+                    $referToKeep = false;
+                    foreach ($keptSheetNames as $ks) {
+                        if (str_contains($val, "'" . $ks . "'!") || str_contains($val, $ks . "!")) {
+                            $referToKeep = true;
+                            break;
+                        }
+                    }
+                    if (!$referToKeep) {
+                        $dn->parentNode->removeChild($dn);
+                        continue;
+                    }
+                }
+
+                if (str_contains($val, '#REF!')) {
                     $dn->parentNode->removeChild($dn);
+                    continue;
+                }
+            }
+
+            // 3. Sinkronkan metadata docProps/app.xml jika ada
+            $appXml = $zip->getFromName('docProps/app.xml');
+            if ($appXml !== false) {
+                $appDom = new DOMDocument();
+                if (@$appDom->loadXML($appXml, LIBXML_NONET)) {
+                    $appXp = new DOMXPath($appDom);
+
+                    // Update jumlah Worksheets di HeadingPairs
+                    foreach ($appXp->query('//*[local-name()="HeadingPairs"]//*[local-name()="lpstr"][text()="Worksheets"]') as $lp) {
+                        $parentVariant = $lp->parentNode;
+                        $nextVariant = $parentVariant ? $parentVariant->nextSibling : null;
+                        while ($nextVariant && $nextVariant->nodeType !== XML_ELEMENT_NODE) {
+                            $nextVariant = $nextVariant->nextSibling;
+                        }
+                        if ($nextVariant) {
+                            $i4Nodes = $appXp->query('.//*[local-name()="i4"]', $nextVariant);
+                            if ($i4Nodes->length > 0) {
+                                $i4Nodes->item(0)->nodeValue = (string)count($keptSheetNames);
+                            }
+                        }
+                    }
+
+                    // Update TitlesOfParts
+                    $titlesVectorNodes = $appXp->query('//*[local-name()="TitlesOfParts"]/*[local-name()="vector"]');
+                    if ($titlesVectorNodes->length > 0) {
+                        $titlesVector = $titlesVectorNodes->item(0);
+                        while ($titlesVector->firstChild) {
+                            $titlesVector->removeChild($titlesVector->firstChild);
+                        }
+                        foreach ($keptSheetNames as $ks) {
+                            $lp = $appDom->createElement('vt:lpstr', htmlspecialchars($ks));
+                            $titlesVector->appendChild($lp);
+                        }
+                        $titlesVector->setAttribute('size', (string)count($keptSheetNames));
+                    }
+
+                    $zip->addFromString('docProps/app.xml', $appDom->saveXML());
                 }
             }
 
@@ -1612,6 +1611,250 @@ class ExcelWorkbookService
             return $outputFilePath;
         } finally {
             $zip->close();
+        }
+    }
+
+    /**
+     * Menghapus file xl/calcChain.xml dan deklarasi terkait secara aman dari arsip ZIP OpenXML.
+     * Excel akan otomatis meregenerasi rantai kalkulasi tanpa error saat workbook dibuka kembali.
+     */
+    private function cleanCalcChainIfPresent(ZipArchive $zip): void
+    {
+        if ($zip->locateName('xl/calcChain.xml') === false) {
+            return;
+        }
+
+        $zip->deleteName('xl/calcChain.xml');
+
+        $ctXml = $zip->getFromName('[Content_Types].xml');
+        if ($ctXml !== false) {
+            $ctDom = new DOMDocument();
+            if (@$ctDom->loadXML($ctXml, LIBXML_NONET)) {
+                $ctXp = new DOMXPath($ctDom);
+                $modified = false;
+                foreach ($ctXp->query('//*[local-name()="Override"][@PartName="/xl/calcChain.xml"]') as $override) {
+                    $override->parentNode->removeChild($override);
+                    $modified = true;
+                }
+                if ($modified) {
+                    $zip->addFromString('[Content_Types].xml', $ctDom->saveXML());
+                }
+            }
+        }
+
+        $relsXml = $zip->getFromName('xl/_rels/workbook.xml.rels');
+        if ($relsXml !== false) {
+            $relsDom = new DOMDocument();
+            if (@$relsDom->loadXML($relsXml, LIBXML_NONET)) {
+                $relsXp = new DOMXPath($relsDom);
+                $modified = false;
+                foreach ($relsXp->query('//*[local-name()="Relationship"][@Target="calcChain.xml" or @Target="/xl/calcChain.xml"]') as $rel) {
+                    $rel->parentNode->removeChild($rel);
+                    $modified = true;
+                }
+                if ($modified) {
+                    $zip->addFromString('xl/_rels/workbook.xml.rels', $relsDom->saveXML());
+                }
+            }
+        }
+    }
+
+    /**
+     * Mengubah nama kolom alfabet (misal 'A', 'Z', 'AA') menjadi indeks angka 1-based (1, 26, 27).
+     */
+    public function colNameToNumber(string $col): int
+    {
+        $col = strtoupper(trim($col));
+        $num = 0;
+        $len = strlen($col);
+        for ($i = 0; $i < $len; $i++) {
+            $num = $num * 26 + ord($col[$i]) - 64;
+        }
+        return $num;
+    }
+
+    /**
+     * Memastikan struktur sheetData pada lembar kerja OpenXML valid:
+     * - Baris dan sel berurutan naik (ascending) sesuai standar OpenXML
+     * - Sel bertipe teks yang ditulis di <v> memiliki atribut t="str"
+     */
+    public function normalizeSheetXml(string $xml): string
+    {
+        $dom = new DOMDocument();
+        if (!@$dom->loadXML($xml, LIBXML_NONET)) {
+            return $xml;
+        }
+        $xp = new DOMXPath($dom);
+
+        $sheetDataNodes = $xp->query('//*[local-name()="sheetData"]');
+        if ($sheetDataNodes->length === 0) {
+            return $xml;
+        }
+        $sheetData = $sheetDataNodes->item(0);
+
+        foreach ($xp->query('./*[local-name()="row"]', $sheetData) as $row) {
+            $cells = [];
+            $cellNodes = [];
+            foreach ($row->childNodes as $child) {
+                if ($child->nodeType === XML_ELEMENT_NODE && $child->localName === 'c') {
+                    $ref = $child->getAttribute('r');
+                    $colNum = 0;
+                    if (preg_match('/^([A-Z]+)\d+$/', $ref, $m)) {
+                        $colNum = $this->colNameToNumber($m[1]);
+                    }
+
+                    // Pastikan sel string non-numerik memiliki t="str" jika ditulis langsung di <v>
+                    $vNodes = $child->getElementsByTagName('v');
+                    $hasFormula = $child->getElementsByTagName('f')->length > 0;
+                    if ($vNodes->length > 0 && !$hasFormula && !$child->hasAttribute('t')) {
+                        $vVal = $vNodes->item(0)->nodeValue;
+                        if (!is_numeric($vVal) && trim($vVal) !== '') {
+                            $child->setAttribute('t', 'str');
+                        }
+                    }
+
+                    $cells[] = ['node' => $child, 'col' => $colNum];
+                    $cellNodes[] = $child;
+                }
+            }
+
+            // Periksa apakah sel perlu diurutkan ulang
+            $needsSort = false;
+            $count = count($cells);
+            for ($i = 0; $i < $count - 1; $i++) {
+                if ($cells[$i]['col'] > $cells[$i + 1]['col']) {
+                    $needsSort = true;
+                    break;
+                }
+            }
+
+            if ($needsSort) {
+                usort($cells, fn($a, $b) => $a['col'] <=> $b['col']);
+                foreach ($cellNodes as $cn) {
+                    $row->removeChild($cn);
+                }
+                foreach ($cells as $item) {
+                    $row->appendChild($item['node']);
+                }
+            }
+        }
+
+        return $dom->saveXML();
+    }
+
+    /**
+     * Memperbarui atau menyisipkan sel ke dalam sheetData dengan urutan row/col yang benar
+     * dan format tipe data standar OpenXML.
+     */
+    public function updateCellInSheetDom(\DOMDocument $dom, \DOMXPath $xp, \DOMElement $sheetData, string $ref, mixed $value, ?string $formula): void
+    {
+        if (!preg_match('/^([A-Z]+)(\d+)$/', $ref, $matches)) {
+            return;
+        }
+
+        $col = $matches[1];
+        $rowNum = (int)$matches[2];
+
+        if ($formula && str_starts_with($formula, '=')) {
+            $formula = ltrim($formula, '=');
+        }
+
+        if (is_string($value) && str_starts_with($value, '=')) {
+            $formula = ltrim($value, '=');
+            $value = '0';
+        }
+
+        // 1. Cari baris atau sisipkan sesuai urutan nomor baris (ascending)
+        $rowNodes = $xp->query('./*[local-name()="row"][@r="' . $rowNum . '"]', $sheetData);
+        if ($rowNodes->length > 0) {
+            $rowNode = $rowNodes->item(0);
+        } else {
+            $rowNode = $dom->createElement('row');
+            $rowNode->setAttribute('r', (string)$rowNum);
+
+            $insertedRow = false;
+            foreach ($sheetData->childNodes as $child) {
+                if ($child->nodeType === XML_ELEMENT_NODE && $child->localName === 'row') {
+                    $childRowNum = (int)$child->getAttribute('r');
+                    if ($childRowNum > $rowNum) {
+                        $sheetData->insertBefore($rowNode, $child);
+                        $insertedRow = true;
+                        break;
+                    }
+                }
+            }
+            if (!$insertedRow) {
+                $sheetData->appendChild($rowNode);
+            }
+        }
+
+        // 2. Cari sel atau sisipkan sesuai urutan kolom alfabet (ascending)
+        $cellNodes = $xp->query('./*[local-name()="c"][@r="' . $ref . '"]', $rowNode);
+        if ($cellNodes->length > 0) {
+            $cNode = $cellNodes->item(0);
+        } else {
+            $cNode = $dom->createElement('c');
+            $cNode->setAttribute('r', $ref);
+
+            $targetColNum = $this->colNameToNumber($col);
+            $inserted = false;
+            foreach ($rowNode->childNodes as $child) {
+                if ($child->nodeType === XML_ELEMENT_NODE && $child->localName === 'c') {
+                    $childRef = $child->getAttribute('r');
+                    if (preg_match('/^([A-Z]+)\d+$/', $childRef, $cm)) {
+                        $childColNum = $this->colNameToNumber($cm[1]);
+                        if ($childColNum > $targetColNum) {
+                            $rowNode->insertBefore($cNode, $child);
+                            $inserted = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            if (!$inserted) {
+                $rowNode->appendChild($cNode);
+            }
+        }
+
+        // 3. Tentukan atribut tipe data 't' pada sel <c>
+        if ($formula) {
+            if (!is_numeric($value) && $value !== null && $value !== '') {
+                $cNode->setAttribute('t', 'str');
+            } else {
+                $cNode->removeAttribute('t');
+            }
+        } else {
+            if (is_numeric($value)) {
+                $cNode->removeAttribute('t');
+            } elseif ($value === null || $value === '') {
+                $cNode->removeAttribute('t');
+            } else {
+                $cNode->setAttribute('t', 'str');
+            }
+        }
+
+        // 4. Update atau hapus tag formula <f>
+        $fNodes = $xp->query('./*[local-name()="f"]', $cNode);
+        if ($formula) {
+            if ($fNodes->length > 0) {
+                $fNodes->item(0)->nodeValue = $formula;
+            } else {
+                $fElem = $dom->createElement('f', htmlspecialchars($formula));
+                $cNode->insertBefore($fElem, $cNode->firstChild);
+            }
+        } else {
+            foreach ($fNodes as $fNode) {
+                $cNode->removeChild($fNode);
+            }
+        }
+
+        // 5. Update tag nilai <v>
+        $vNodes = $xp->query('./*[local-name()="v"]', $cNode);
+        if ($vNodes->length > 0) {
+            $vNodes->item(0)->nodeValue = (string)$value;
+        } else {
+            $vElem = $dom->createElement('v', (string)$value);
+            $cNode->appendChild($vElem);
         }
     }
 }
